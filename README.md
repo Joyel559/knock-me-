@@ -12,6 +12,15 @@ for anyone who wants to rest without worrying.
 
 No account. No tracking. Everything stays on your phone.
 
+## Download the APK
+
+Just want to use the app? Click **[knockme.apk](knockme.apk)**, download it, open it on your
+Android phone, and install it (allow "install from unknown sources" if asked). No Android
+Studio needed.
+
+<p align="center"><img src="assets/screenshots/protect.png" width="260"></p>
+<p align="center">Google Play Protect verified APK</p>
+
 A location alarm that wakes you before your stop and warns you when your ride leaves the route.
 
 ## Why I built this
@@ -74,22 +83,6 @@ Everything stays on your phone. No accounts, no analytics, no cloud sync. The on
 calls are to the keyless public Nominatim and OSRM services, used to search for places and
 fetch a route — no personal data is sent beyond the coordinates needed for that single request.
 
-## Build and run
-
-1. Install [Android Studio](https://developer.android.com/studio).
-2. Open this folder as a project.
-3. Plug in a phone with USB debugging enabled, press Run.
-
-Or from the command line:
-
-```
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-export ANDROID_HOME="$HOME/Library/Android/sdk"
-./gradlew assembleDebug
-```
-
-APK output: `app/build/outputs/apk/debug/app-debug.apk`
-
 ## Permissions and why each is needed
 
 - **Location (fine/coarse)** — required to track your position and detect arrival/off-route.
@@ -117,3 +110,21 @@ APK output: `app/build/outputs/apk/debug/app-debug.apk`
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Build and run (developers)
+
+Want to build it yourself instead of using the APK above?
+
+1. Install [Android Studio](https://developer.android.com/studio).
+2. Open this folder as a project.
+3. Plug in a phone with USB debugging enabled, press Run.
+
+Or from the command line:
+
+```
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+./gradlew assembleDebug
+```
+
+APK output: `app/build/outputs/apk/debug/app-debug.apk`
