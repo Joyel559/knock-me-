@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.TripGuard" parent="android:Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

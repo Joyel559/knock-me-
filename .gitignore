@@ -1,0 +1,11 @@
+docs/
+CLAUDE.md
+app/image/
+build/
+.gradle/
+local.properties
+.idea/
+*.iml
+captures/
+.DS_Store
+*.apk
