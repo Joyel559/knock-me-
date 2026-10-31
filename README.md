@@ -41,10 +41,17 @@ be told before I reach my place so I can get ready and get out in time.
 ## Features
 
 - Current location and destination fields, with search, pin-on-map, and paste support.
+- No-API-key place search: searches your saved/recent places, Photon, and Nominatim at once,
+  sorts the results (your own places first, then nearest to you), and removes duplicates.
+- Paste or share a Google Maps link, shared text, a `geo:` link, plain coordinates, or a Plus
+  Code (full or short) — Knock Me reads the destination straight out of it.
 - Saved places (Home, Office, custom) and recent trips, one tap to reuse.
-- Local trip history stored on the device.
+- Local trip history stored on the device, with a "Clear all history" option in Settings.
+- Custom alarm distances — set the main radius and the final alarm down to the exact meter.
 - A readable memory file mirrored to `Documents/Knock Me Memory/` for backup/export.
 - Battery-friendly adaptive GPS polling (slows down when you're far from the destination).
+- Lean permissions by default, with an optional Max reliability mode and a watchdog that alerts
+  you if tracking ever actually stops.
 - Plain black-and-white UI, no clutter.
 - Cab and Bus/Train modes.
 - One clear Stop button that actually stops everything (alarm, tracking, service).
@@ -74,14 +81,14 @@ row. The alarm uses a full-screen intent so it can wake the screen and ring even
 - Fused Location Provider (Google Play services) with a platform-location fallback
 - Room (local trip history, saved places)
 - DataStore (settings, active trip)
-- osmdroid (map tiles), Nominatim (search/geocoding), OSRM (routing)
+- osmdroid (map tiles), Photon and Nominatim (search/geocoding), OSRM (routing)
 - No API keys required anywhere.
 
 ## Privacy
 
 Everything stays on your phone. No accounts, no analytics, no cloud sync. The only network
-calls are to the keyless public Nominatim and OSRM services, used to search for places and
-fetch a route — no personal data is sent beyond the coordinates needed for that single request.
+calls are to the keyless public Photon, Nominatim, and OSRM services, used to search for places
+and fetch a route — no personal data is sent beyond the coordinates needed for that request.
 
 ## Permissions: Lean mode vs Max reliability
 
