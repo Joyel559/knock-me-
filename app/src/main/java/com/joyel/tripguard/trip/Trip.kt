@@ -5,6 +5,8 @@ import kotlinx.serialization.Serializable
 
 enum class Mode { CAB, BUS_TRAIN }
 
+const val DEFAULT_FINAL_ALARM_RADIUS_M = 300
+
 enum class TripState { IDLE, ACTIVE, ARRIVAL_ALARMING, ROUTE_ALARMING, FINISHED }
 
 @Serializable
@@ -24,6 +26,7 @@ data class Trip(
     val radiusMeters: Int,
     val mode: Mode,
     val finalAlarmEnabled: Boolean,
+    val finalAlarmMeters: Int = DEFAULT_FINAL_ALARM_RADIUS_M,
     val route: List<SerLatLon>?,
     val state: TripState,
     val startedAt: Long

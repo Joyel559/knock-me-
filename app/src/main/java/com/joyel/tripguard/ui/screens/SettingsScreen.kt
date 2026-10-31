@@ -23,6 +23,9 @@ import com.joyel.tripguard.service.AlarmKind
 import com.joyel.tripguard.trip.Mode
 import com.joyel.tripguard.trip.SettingsRepository
 import com.joyel.tripguard.ui.Routes
+import com.joyel.tripguard.ui.components.KnockCustomDistanceDialog
+import com.joyel.tripguard.ui.components.KnockDistanceChipsRow
+import com.joyel.tripguard.ui.components.formatMeters
 import com.joyel.tripguard.ui.permissions.PermissionsChecklist
 import kotlinx.coroutines.launch
 
@@ -56,14 +59,55 @@ fun SettingsScreen(navController: NavController) {
         ) {
             Text("Settings", style = MaterialTheme.typography.titleLarge, color = Color.White)
 
-            Text("Default radius (km)", color = Color.LightGray, modifier = Modifier.padding(top = 16.dp))
-            Row {
-                listOf(1, 2, 3, 5).forEach { km ->
-                    FilterChip(
-                        selected = settings.defaultRadiusKm == km,
-                        onClick = { scope.launch { repo.update { it.copy(defaultRadiusKm = km) } } },
-                        label = { Text("$km", color = Color.White) },
-                        modifier = Modifier.padding(end = 8.dp)
+            Text("Default alarm radius", color = Color.LightGray, modifier = Modifier.padding(top = 16.dp))
+            var showDefaultRadiusDialog by remember { mutableStateOf(false) }
+            KnockDistanceChipsRow(
+                presetsMeters = listOf(1000, 2000, 3000, 5000),
+                selectedMeters = settings.defaultRadiusMeters,
+                isCustom = settings.defaultRadiusMeters !in listOf(1000, 2000, 3000, 5000),
+                onSelectPreset = { m -> scope.launch { repo.update { it.copy(defaultRadiusMeters = m) } } },
+                onCustomClick = { showDefaultRadiusDialog = true },
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            if (showDefaultRadiusDialog) {
+                KnockCustomDistanceDialog(
+                    title = "Custom default radius",
+                    minMeters = 100,
+                    maxMeters = 50_000,
+                    allowUnitToggle = true,
+                    initialMeters = settings.defaultRadiusMeters,
+                    onConfirm = { m -> scope.launch { repo.update { it.copy(defaultRadiusMeters = m) } } },
+                    onDismiss = { showDefaultRadiusDialog = false }
+                )
+            }
+
+            Text("Default final alarm", color = Color.LightGray, modifier = Modifier.padding(top = 16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(
+                    checked = settings.defaultFinalAlarmEnabled,
+                    onCheckedChange = { v -> scope.launch { repo.update { it.copy(defaultFinalAlarmEnabled = v) } } }
+                )
+                Text("Enabled by default, at ${formatMeters(settings.defaultFinalAlarmMeters)}", color = Color.White, modifier = Modifier.padding(start = 8.dp))
+            }
+            if (settings.defaultFinalAlarmEnabled) {
+                var showDefaultFinalDialog by remember { mutableStateOf(false) }
+                KnockDistanceChipsRow(
+                    presetsMeters = listOf(100, 200, 300, 500),
+                    selectedMeters = settings.defaultFinalAlarmMeters,
+                    isCustom = settings.defaultFinalAlarmMeters !in listOf(100, 200, 300, 500),
+                    onSelectPreset = { m -> scope.launch { repo.update { it.copy(defaultFinalAlarmMeters = m) } } },
+                    onCustomClick = { showDefaultFinalDialog = true },
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                if (showDefaultFinalDialog) {
+                    KnockCustomDistanceDialog(
+                        title = "Custom default final alarm",
+                        minMeters = 50,
+                        maxMeters = 5000,
+                        allowUnitToggle = false,
+                        initialMeters = settings.defaultFinalAlarmMeters,
+                        onConfirm = { m -> scope.launch { repo.update { it.copy(defaultFinalAlarmMeters = m) } } },
+                        onDismiss = { showDefaultFinalDialog = false }
                     )
                 }
             }

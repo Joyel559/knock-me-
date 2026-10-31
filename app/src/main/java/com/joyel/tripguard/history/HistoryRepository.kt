@@ -10,6 +10,7 @@ class HistoryRepository(context: Context) {
     private val tripDao = db.tripHistoryDao()
     private val eventDao = db.routeAlarmEventDao()
     private val placeDao = db.savedPlaceDao()
+    private val placeCacheDao = db.placeCacheDao()
 
     suspend fun insertTrip(trip: TripHistory) = tripDao.insert(trip)
     suspend fun updateTrip(trip: TripHistory) = tripDao.update(trip)
@@ -32,6 +33,14 @@ class HistoryRepository(context: Context) {
     suspend fun updateSavedPlace(place: SavedPlace) = placeDao.update(place)
     suspend fun deleteSavedPlace(place: SavedPlace) = placeDao.delete(place)
     /** Home/Office first (if present), then the rest in creation order. */
+    suspend fun getPlaceCache(query: String): PlaceCache? = placeCacheDao.get(query)
+    suspend fun putPlaceCache(entry: PlaceCache) = placeCacheDao.put(entry)
+    suspend fun clearOldPlaceCache(olderThan: Long) = placeCacheDao.clearOlderThan(olderThan)
+
+    /** All saved places, used by trip history and search as "Recent"/"Saved" results. */
+    suspend fun getAllTripsOnce(): List<TripHistory> = tripDao.getAll()
+    suspend fun getAllSavedPlacesOnce(): List<SavedPlace> = placeDao.getAll()
+
     fun observeSavedPlaces(): Flow<List<SavedPlace>> = placeDao.observeAll().map { places ->
         val priority = { name: String -> when (name.trim().lowercase()) {
             "home" -> 0

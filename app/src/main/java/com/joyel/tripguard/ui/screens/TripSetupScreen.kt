@@ -36,7 +36,10 @@ import com.joyel.tripguard.trip.TripPrefillHolder
 import com.joyel.tripguard.trip.TripRepository
 import com.joyel.tripguard.trip.TripState
 import com.joyel.tripguard.ui.Routes
+import com.joyel.tripguard.ui.components.KnockCustomDistanceDialog
+import com.joyel.tripguard.ui.components.KnockDistanceChipsRow
 import com.joyel.tripguard.ui.components.TripMap
+import com.joyel.tripguard.ui.components.formatMeters
 import com.joyel.tripguard.ui.permissions.PermCheckId
 import com.joyel.tripguard.ui.permissions.buildPermissionChecklist
 import kotlinx.coroutines.flow.first
@@ -44,7 +47,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
-private val RADIUS_OPTIONS_KM = listOf(1, 2, 3, 5)
+private val MAIN_RADIUS_PRESETS_M = listOf(1000, 2000, 3000, 5000)
+private val FINAL_ALARM_PRESETS_M = listOf(100, 200, 300, 500)
 private const val DEFAULT_CENTER_LAT = 12.9716
 private const val DEFAULT_CENTER_LON = 77.5946
 
@@ -67,10 +71,11 @@ fun TripSetupScreen(navController: NavController) {
     var activeEditingField by remember { mutableStateOf<EditingField?>(null) }
     var searchResults by remember { mutableStateOf<List<PlaceResult>>(emptyList()) }
 
-    var radiusKm by remember { mutableStateOf(3) }
-    var customRadiusText by remember { mutableStateOf("") }
+    var radiusMeters by remember { mutableStateOf(3000) }
     var mode by remember { mutableStateOf(Mode.CAB) }
     var finalAlarmEnabled by remember { mutableStateOf(false) }
+    var finalAlarmMeters by remember { mutableStateOf(com.joyel.tripguard.trip.DEFAULT_FINAL_ALARM_RADIUS_M) }
+    var showCustomFinalDialog by remember { mutableStateOf(false) }
 
     var errorText by remember { mutableStateOf<String?>(null) }
     var showAlreadyInsideDialog by remember { mutableStateOf(false) }
@@ -99,8 +104,7 @@ fun TripSetupScreen(navController: NavController) {
             destLabel = prefill.label
             toQuery = prefill.label
             mode = prefill.mode
-            radiusKm = (prefill.radiusMeters / 1000).coerceAtLeast(1)
-            customRadiusText = ""
+            radiusMeters = prefill.radiusMeters
         }
         TripPrefillHolder.pending = null
     }
@@ -121,15 +125,23 @@ fun TripSetupScreen(navController: NavController) {
 
     LaunchedEffect(Unit) {
         val defaults = com.joyel.tripguard.trip.SettingsRepository(context).get()
-        radiusKm = defaults.defaultRadiusKm
+        radiusMeters = defaults.defaultRadiusMeters
         mode = defaults.defaultMode
+        finalAlarmEnabled = defaults.defaultFinalAlarmEnabled
+        finalAlarmMeters = defaults.defaultFinalAlarmMeters
+    }
+
+    // Final alarm must stay smaller than the main radius; auto-correct rather than let it stick.
+    LaunchedEffect(radiusMeters, finalAlarmMeters) {
+        if (finalAlarmMeters >= radiusMeters) {
+            finalAlarmMeters = (radiusMeters / 2).coerceAtLeast(50)
+        }
     }
 
     val currentReadyLatLon = (locationState as? LocationState.Ready)?.let { LatLon(it.lat, it.lon) }
     val effectiveFrom = fromLocation ?: currentReadyLatLon ?: LatLon(DEFAULT_CENTER_LAT, DEFAULT_CENTER_LON)
 
-    fun effectiveRadiusMeters(): Int =
-        (customRadiusText.toIntOrNull() ?: radiusKm) * 1000
+    fun effectiveRadiusMeters(): Int = radiusMeters
 
     fun startTrip(skipInsideCheck: Boolean) {
         val dest = destination
@@ -188,6 +200,7 @@ fun TripSetupScreen(navController: NavController) {
                 radiusMeters = radiusMeters,
                 mode = mode,
                 finalAlarmEnabled = finalAlarmEnabled,
+                finalAlarmMeters = finalAlarmMeters,
                 route = route?.map { SerLatLon.from(it) },
                 state = TripState.ACTIVE,
                 startedAt = System.currentTimeMillis()
@@ -448,8 +461,8 @@ fun TripSetupScreen(navController: NavController) {
                                             destLabel = trip.toLabel
                                             toQuery = trip.toLabel
                                             mode = trip.mode
-                                            radiusKm = (trip.radiusMeters / 1000).coerceAtLeast(1)
-                                            customRadiusText = ""
+                                            radiusMeters = trip.radiusMeters
+                                            trip.finalAlarmMeters?.let { finalAlarmEnabled = true; finalAlarmMeters = it }
                                         },
                                         label = { Text("${trip.fromLabel} > ${trip.toLabel}", color = Color.White) },
                                         modifier = Modifier.padding(end = 8.dp)
@@ -503,30 +516,14 @@ fun TripSetupScreen(navController: NavController) {
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text("Alarm radius", color = Color.LightGray)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(vertical = 4.dp).horizontalScroll(rememberScrollState())
-                    ) {
-                        RADIUS_OPTIONS_KM.forEach { km ->
-                            FilterChip(
-                                selected = radiusKm == km && customRadiusText.isBlank(),
-                                onClick = { radiusKm = km; customRadiusText = "" },
-                                label = { Text("$km km", color = if (radiusKm == km && customRadiusText.isBlank()) Color.Black else Color.White) },
-                                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color.White)
-                            )
-                        }
-                        FilterChip(
-                            selected = customRadiusText.isNotBlank(),
-                            onClick = { showCustomRadiusDialog = true },
-                            label = {
-                                Text(
-                                    if (customRadiusText.isNotBlank()) "${customRadiusText} km" else "Custom",
-                                    color = if (customRadiusText.isNotBlank()) Color.Black else Color.White
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color.White)
-                        )
-                    }
+                    KnockDistanceChipsRow(
+                        presetsMeters = MAIN_RADIUS_PRESETS_M,
+                        selectedMeters = radiusMeters,
+                        isCustom = radiusMeters !in MAIN_RADIUS_PRESETS_M,
+                        onSelectPreset = { radiusMeters = it },
+                        onCustomClick = { showCustomRadiusDialog = true },
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
 
                     Text("Mode", color = Color.LightGray, modifier = Modifier.padding(top = 8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 4.dp)) {
@@ -549,7 +546,25 @@ fun TripSetupScreen(navController: NavController) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Switch(checked = finalAlarmEnabled, onCheckedChange = { finalAlarmEnabled = it })
-                        Text("Final alarm at 300 m", color = Color.White, modifier = Modifier.padding(start = 8.dp))
+                        Text("Final alarm at ${formatMeters(finalAlarmMeters)}", color = Color.White, modifier = Modifier.padding(start = 8.dp))
+                    }
+                    if (finalAlarmEnabled) {
+                        KnockDistanceChipsRow(
+                            presetsMeters = FINAL_ALARM_PRESETS_M,
+                            selectedMeters = finalAlarmMeters,
+                            isCustom = finalAlarmMeters !in FINAL_ALARM_PRESETS_M,
+                            onSelectPreset = { finalAlarmMeters = it },
+                            onCustomClick = { showCustomFinalDialog = true },
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        if (finalAlarmMeters >= radiusMeters) {
+                            Text(
+                                "Final alarm must be smaller than the main radius, adjusted to ${formatMeters(radiusMeters / 2)}",
+                                color = Color.LightGray,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -627,33 +642,26 @@ fun TripSetupScreen(navController: NavController) {
     }
 
     if (showCustomRadiusDialog) {
-        var text by remember { mutableStateOf(customRadiusText) }
-        AlertDialog(
-            onDismissRequest = { showCustomRadiusDialog = false },
-            containerColor = Color.Black,
-            title = { Text("Custom radius (km)", color = Color.White) },
-            text = {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it.filter { c -> c.isDigit() } },
-                    label = { Text("Kilometers", color = Color.LightGray) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    )
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (text.toIntOrNull() != null && text.toInt() > 0) {
-                        customRadiusText = text
-                    }
-                    showCustomRadiusDialog = false
-                }) { Text("Set", color = Color.White) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCustomRadiusDialog = false }) { Text("Cancel", color = Color.White) }
-            }
+        KnockCustomDistanceDialog(
+            title = "Custom alarm radius",
+            minMeters = 100,
+            maxMeters = 50_000,
+            allowUnitToggle = true,
+            initialMeters = radiusMeters,
+            onConfirm = { radiusMeters = it },
+            onDismiss = { showCustomRadiusDialog = false }
+        )
+    }
+
+    if (showCustomFinalDialog) {
+        KnockCustomDistanceDialog(
+            title = "Custom final alarm",
+            minMeters = 50,
+            maxMeters = 5000,
+            allowUnitToggle = false,
+            initialMeters = finalAlarmMeters,
+            onConfirm = { finalAlarmMeters = it },
+            onDismiss = { showCustomFinalDialog = false }
         )
     }
 

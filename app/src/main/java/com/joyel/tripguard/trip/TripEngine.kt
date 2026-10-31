@@ -15,7 +15,6 @@ private const val ROUTE_COOLDOWN_MS = 5 * 60_000L
 private const val ROUTE_IGNORE_MS = 10 * 60_000L
 private const val GPS_WEAK_MS = 90_000L
 private const val NO_FIX_TOO_LONG_MS = 5 * 60_000L
-const val FINAL_ALARM_RADIUS_M = 300.0
 
 /**
  * Pure logic: feed [Fix]es in, get [TripEvent]s out. No Android classes here so it is
@@ -73,7 +72,7 @@ class TripEngine(
                 events += TripEvent.ArrivalReached(distanceToDest)
             }
         } else if (trip.finalAlarmEnabled && !finalFired) {
-            if (distanceToDest <= FINAL_ALARM_RADIUS_M) {
+            if (distanceToDest <= trip.finalAlarmMeters) {
                 finalConsecutive++
             } else {
                 finalConsecutive = 0

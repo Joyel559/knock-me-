@@ -13,7 +13,8 @@ class TripEngineTest {
     private fun cabTrip(
         route: List<LatLon> = listOf(LatLon(0.0, 0.0), LatLon(0.0, 1.0)),
         radius: Int = 50,
-        finalAlarm: Boolean = false
+        finalAlarm: Boolean = false,
+        finalAlarmMeters: Int = DEFAULT_FINAL_ALARM_RADIUS_M
     ) = Trip(
         id = "t1",
         destLat = 0.0,
@@ -22,12 +23,17 @@ class TripEngineTest {
         radiusMeters = radius,
         mode = Mode.CAB,
         finalAlarmEnabled = finalAlarm,
+        finalAlarmMeters = finalAlarmMeters,
         route = route.map { SerLatLon.from(it) },
         state = TripState.ACTIVE,
         startedAt = 0L
     )
 
-    private fun busTrip(radius: Int = 50, finalAlarm: Boolean = false) = Trip(
+    private fun busTrip(
+        radius: Int = 50,
+        finalAlarm: Boolean = false,
+        finalAlarmMeters: Int = DEFAULT_FINAL_ALARM_RADIUS_M
+    ) = Trip(
         id = "t2",
         destLat = 0.0,
         destLon = 1.0,
@@ -35,6 +41,7 @@ class TripEngineTest {
         radiusMeters = radius,
         mode = Mode.BUS_TRAIN,
         finalAlarmEnabled = finalAlarm,
+        finalAlarmMeters = finalAlarmMeters,
         route = null,
         state = TripState.ACTIVE,
         startedAt = 0L
@@ -173,6 +180,45 @@ class TripEngineTest {
         val old = fix(0.0, 1.0, 10f, 0L)
         val events = engine.process(old, 40_000L)
         assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun `final alarm at a custom distance fires once, only after the main arrival alarm`() {
+        val engine = TripEngine(busTrip(radius = 50, finalAlarm = true, finalAlarmMeters = 20))
+        var t = 0L
+
+        t += 1000
+        val e1 = engine.process(fix(0.0, 1.0, 10f, t), t)
+        assertTrue("first fix at dest should not fire alone", e1.isEmpty())
+
+        t += 1000
+        val e2 = engine.process(fix(0.0, 1.0, 10f, t), t)
+        assertEquals(1, e2.size)
+        assertTrue("2nd consecutive fix fires the main arrival alarm", e2[0] is TripEvent.ArrivalReached)
+
+        t += 1000
+        val e3 = engine.process(fix(0.0, 1.0, 10f, t), t)
+        assertTrue("1st fix after arrival should not fire the final alarm alone", e3.isEmpty())
+
+        t += 1000
+        val e4 = engine.process(fix(0.0, 1.0, 10f, t), t)
+        assertEquals(1, e4.size)
+        assertTrue("2nd consecutive fix after arrival fires the custom final alarm", e4[0] is TripEvent.FinalArrivalReached)
+
+        t += 1000
+        val e5 = engine.process(fix(0.0, 1.0, 10f, t), t)
+        assertTrue("final alarm must not fire twice", e5.isEmpty())
+    }
+
+    @Test
+    fun `final alarm never fires when disabled, even well inside the custom distance`() {
+        val engine = TripEngine(busTrip(radius = 50, finalAlarm = false))
+        var t = 0L
+        repeat(6) {
+            t += 1000
+            val events = engine.process(fix(0.0, 1.0, 10f, t), t)
+            assertTrue(events.none { it is TripEvent.FinalArrivalReached })
+        }
     }
 
     @Test

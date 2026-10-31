@@ -23,6 +23,7 @@ data class TripHistory(
     val toLabel: String,
     val mode: Mode,
     val radiusMeters: Int,
+    val finalAlarmMeters: Int? = null,
     val distanceMeters: Double,
     val durationSeconds: Long,
     val arrivalAlarmRang: Boolean,
@@ -50,6 +51,14 @@ data class RouteAlarmEvent(
     val lon: Double,
     val offRouteMeters: Double,
     val userAction: RouteAlarmAction
+)
+
+/** In-Room cache of search results, keyed by the lowercase query text (PlaceSearchRepository). */
+@Entity(tableName = "place_cache")
+data class PlaceCache(
+    @PrimaryKey val query: String,
+    val resultsJson: String,
+    val cachedAt: Long
 )
 
 @Entity(tableName = "saved_place")

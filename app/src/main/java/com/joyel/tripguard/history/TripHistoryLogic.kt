@@ -21,6 +21,7 @@ object TripHistoryLogic {
         toLabel = trip.destLabel,
         mode = trip.mode,
         radiusMeters = trip.radiusMeters,
+        finalAlarmMeters = if (trip.finalAlarmEnabled) trip.finalAlarmMeters else null,
         distanceMeters = 0.0,
         durationSeconds = 0,
         arrivalAlarmRang = false,

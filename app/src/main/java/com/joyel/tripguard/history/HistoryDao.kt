@@ -3,6 +3,7 @@ package com.joyel.tripguard.history
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
@@ -68,4 +69,16 @@ interface SavedPlaceDao {
 
     @Query("SELECT * FROM saved_place ORDER BY createdAt ASC")
     suspend fun getAll(): List<SavedPlace>
+}
+
+@Dao
+interface PlaceCacheDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(entry: PlaceCache)
+
+    @Query("SELECT * FROM place_cache WHERE query = :query")
+    suspend fun get(query: String): PlaceCache?
+
+    @Query("DELETE FROM place_cache WHERE cachedAt < :olderThan")
+    suspend fun clearOlderThan(olderThan: Long)
 }
