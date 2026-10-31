@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -25,6 +26,7 @@ import com.joyel.tripguard.location.LocationState
 import com.joyel.tripguard.routing.OsrmRoutingProvider
 import com.joyel.tripguard.search.NominatimClient
 import com.joyel.tripguard.search.PlaceResult
+import com.joyel.tripguard.search.PlaceSearchRepository
 import com.joyel.tripguard.service.ACTION_START
 import com.joyel.tripguard.service.TripService
 import com.joyel.tripguard.share.ShareIntentParser
@@ -59,6 +61,7 @@ fun TripSetupScreen(navController: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val nominatim = remember { NominatimClient() }
+    val placeSearchRepo = remember { PlaceSearchRepository(context) }
 
     var fromLocation by remember { mutableStateOf<LatLon?>(null) }
     var fromLabel by remember { mutableStateOf("Current location") }
@@ -70,6 +73,8 @@ fun TripSetupScreen(navController: NavController) {
 
     var activeEditingField by remember { mutableStateOf<EditingField?>(null) }
     var searchResults by remember { mutableStateOf<List<PlaceResult>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    var searchFailed by remember { mutableStateOf(false) }
 
     var radiusMeters by remember { mutableStateOf(3000) }
     var mode by remember { mutableStateOf(Mode.CAB) }
@@ -124,11 +129,20 @@ fun TripSetupScreen(navController: NavController) {
     }
 
     LaunchedEffect(Unit) {
-        val defaults = com.joyel.tripguard.trip.SettingsRepository(context).get()
+        val settingsRepo = com.joyel.tripguard.trip.SettingsRepository(context)
+        val defaults = settingsRepo.get()
         radiusMeters = defaults.defaultRadiusMeters
         mode = defaults.defaultMode
         finalAlarmEnabled = defaults.defaultFinalAlarmEnabled
         finalAlarmMeters = defaults.defaultFinalAlarmMeters
+
+        if (defaults.searchCountryCode == null) {
+            val fix = withTimeoutOrNull(10_000) { locationRepo.state.first { it is LocationState.Ready } } as? LocationState.Ready
+            if (fix != null) {
+                val cc = nominatim.reverseCountryCode(fix.lat, fix.lon)
+                if (cc != null) settingsRepo.update { it.copy(searchCountryCode = cc) }
+            }
+        }
     }
 
     // Final alarm must stay smaller than the main radius; auto-correct rather than let it stick.
@@ -140,6 +154,32 @@ fun TripSetupScreen(navController: NavController) {
 
     val currentReadyLatLon = (locationState as? LocationState.Ready)?.let { LatLon(it.lat, it.lon) }
     val effectiveFrom = fromLocation ?: currentReadyLatLon ?: LatLon(DEFAULT_CENTER_LAT, DEFAULT_CENTER_LON)
+
+    // Debounced search: min 3 chars, 600ms debounce, previous request cancelled by the key change.
+    LaunchedEffect(activeEditingField, fromQuery, toQuery) {
+        val field = activeEditingField ?: return@LaunchedEffect
+        val q = if (field == EditingField.FROM) fromQuery else toQuery
+        if (q.isBlank()) {
+            searchResults = placeSearchRepo.browseLocal()
+            searching = false
+            searchFailed = false
+            return@LaunchedEffect
+        }
+        if (q.trim().length < 3) {
+            searchResults = placeSearchRepo.searchLocal(q)
+            searching = false
+            searchFailed = false
+            return@LaunchedEffect
+        }
+        searching = true
+        searchFailed = false
+        kotlinx.coroutines.delay(600)
+        val settings = runCatching { com.joyel.tripguard.trip.SettingsRepository(context).get() }.getOrNull()
+        val results = placeSearchRepo.search(q, near = currentReadyLatLon, countryCode = settings?.searchCountryCode)
+        searching = false
+        searchResults = results
+        searchFailed = results.isEmpty()
+    }
 
     fun effectiveRadiusMeters(): Int = radiusMeters
 
@@ -255,7 +295,6 @@ fun TripSetupScreen(navController: NavController) {
                             fromLabel = q
                             fromLocation = null
                             activeEditingField = EditingField.FROM
-                            scope.launch { searchResults = nominatim.search(q).take(5) }
                         },
                         label = { Text("From", color = Color.LightGray) },
                         colors = OutlinedTextFieldDefaults.colors(
@@ -264,7 +303,9 @@ fun TripSetupScreen(navController: NavController) {
                             focusedBorderColor = Color.White,
                             unfocusedBorderColor = Color.Gray
                         ),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { if (it.isFocused) activeEditingField = EditingField.FROM }
                     )
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -315,7 +356,6 @@ fun TripSetupScreen(navController: NavController) {
                             toQuery = q
                             destLabel = q
                             activeEditingField = EditingField.TO
-                            scope.launch { searchResults = nominatim.search(q).take(5) }
                         },
                         label = { Text("To (Destination)*", color = Color.LightGray) },
                         colors = OutlinedTextFieldDefaults.colors(
@@ -324,7 +364,9 @@ fun TripSetupScreen(navController: NavController) {
                             focusedBorderColor = Color.White,
                             unfocusedBorderColor = Color.Gray
                         ),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { if (it.isFocused) activeEditingField = EditingField.TO }
                     )
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -335,7 +377,14 @@ fun TripSetupScreen(navController: NavController) {
                     ) {
                         TextButton(onClick = {
                             activeEditingField = EditingField.TO
-                            scope.launch { searchResults = nominatim.search(toQuery).take(5) }
+                            scope.launch {
+                                searching = true
+                                val settings = runCatching { com.joyel.tripguard.trip.SettingsRepository(context).get() }.getOrNull()
+                                val results = placeSearchRepo.search(toQuery, near = currentReadyLatLon, countryCode = settings?.searchCountryCode)
+                                searching = false
+                                searchResults = results
+                                searchFailed = results.isEmpty()
+                            }
                         }) { Text("Search", color = Color.White) }
                         TextButton(onClick = {
                             pickerTargetField = EditingField.TO
@@ -382,8 +431,8 @@ fun TripSetupScreen(navController: NavController) {
                         ) { Text("Save", color = Color.White) }
                     }
 
-                    // SEARCH RESULTS DROPDOWN (max 5 rows)
-                    if (searchResults.isNotEmpty() && activeEditingField != null) {
+                    // SEARCH RESULTS DROPDOWN (max 8 rows, local matches tagged)
+                    if (activeEditingField != null) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -395,12 +444,25 @@ fun TripSetupScreen(navController: NavController) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Search Results (max 5):", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
-                                TextButton(onClick = { searchResults = emptyList(); activeEditingField = null }) {
+                                if (searching) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color.White
+                                        )
+                                        Text(" Searching…", color = Color.LightGray, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 6.dp))
+                                    }
+                                } else if (searchResults.isNotEmpty()) {
+                                    Text("Results:", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                } else {
+                                    Text("Places near you:", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                }
+                                TextButton(onClick = { activeEditingField = null }) {
                                     Text("Close", color = Color.Cyan)
                                 }
                             }
-                            searchResults.take(5).forEach { result ->
+                            searchResults.take(8).forEach { result ->
                                 TextButton(
                                     onClick = {
                                         if (activeEditingField == EditingField.FROM) {
@@ -417,7 +479,36 @@ fun TripSetupScreen(navController: NavController) {
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text(result.label, color = Color.White, maxLines = 1)
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(result.label, color = Color.White, maxLines = 1, modifier = Modifier.weight(1f))
+                                        result.tag?.let {
+                                            Text(it, color = Color.Gray, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
+                                        }
+                                    }
+                                }
+                            }
+                            if (!searching && searchResults.isEmpty() && searchFailed) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("No match. Try adding the city, or pick on the map.", color = Color.White)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                                        TextButton(onClick = {
+                                            pickerTargetField = activeEditingField ?: EditingField.TO
+                                            showFullScreenMapPicker = true
+                                            activeEditingField = null
+                                        }) { Text("Pick on map", color = Color.White) }
+                                        TextButton(onClick = {
+                                            val field = activeEditingField
+                                            scope.launch {
+                                                val q = if (field == EditingField.FROM) fromQuery else toQuery
+                                                searching = true
+                                                val settings = runCatching { com.joyel.tripguard.trip.SettingsRepository(context).get() }.getOrNull()
+                                                val results = placeSearchRepo.search(q, near = currentReadyLatLon, countryCode = settings?.searchCountryCode)
+                                                searching = false
+                                                searchResults = results
+                                                searchFailed = results.isEmpty()
+                                            }
+                                        }) { Text("Try again", color = Color.White) }
+                                    }
                                 }
                             }
                         }
