@@ -37,7 +37,8 @@ fun ActiveTripScreen(navController: NavController) {
                 style = MaterialTheme.typography.displayMedium,
                 color = Color.White
             )
-            Text(uiState.statusText, style = MaterialTheme.typography.titleMedium, color = Color.LightGray)
+            val statusText = if (uiState.distanceMeters == null) "Resuming your trip…" else uiState.statusText
+            Text(statusText, style = MaterialTheme.typography.titleMedium, color = Color.LightGray)
             Text("Accuracy: ${uiState.accuracyM?.let { "%.0f m".format(it) } ?: "—"}", color = Color.LightGray)
             Text("Interval: ${uiState.intervalMs?.let { "${it / 1000}s" } ?: "—"}", color = Color.LightGray)
 

@@ -32,6 +32,7 @@ object Routes {
     const val HISTORY = "history"
     const val HISTORY_DETAIL = "history_detail"
     const val SAVED_PLACES = "saved_places"
+    const val RELIABILITY = "reliability"
 }
 
 class MainActivity : ComponentActivity() {
@@ -71,6 +72,7 @@ class MainActivity : ComponentActivity() {
                         if (tripId != null) HistoryDetailScreen(navController, tripId)
                     }
                     composable(Routes.SAVED_PLACES) { SavedPlacesScreen(navController) }
+                    composable(Routes.RELIABILITY) { com.joyel.tripguard.ui.screens.ReliabilityScreen(navController) }
                     composable(Routes.ONBOARDING) {
                         OnboardingScreen(onFinished = {
                             if (!navController.popBackStack()) {

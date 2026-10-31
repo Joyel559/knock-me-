@@ -53,10 +53,10 @@ fun buildPermissionChecklist(context: Context): List<PermCheck> {
 
     return listOf(
         PermCheck(PermCheckId.GPS_ENABLED, "GPS turned on", isGpsEnabled(context)),
-        PermCheck(PermCheckId.FINE_LOCATION, "Location access", fineOrCoarse),
-        PermCheck(PermCheckId.BACKGROUND_LOCATION, "Background location (\"Allow all the time\")", background),
+        PermCheck(PermCheckId.FINE_LOCATION, "Location while you use Knock Me", fineOrCoarse),
+        PermCheck(PermCheckId.BACKGROUND_LOCATION, "Location, all the time (Max reliability)", background),
         PermCheck(PermCheckId.NOTIFICATIONS, "Notifications", notifications),
-        PermCheck(PermCheckId.FULL_SCREEN_INTENT, "Full-screen alarm", canUseFullScreenIntent(context)),
-        PermCheck(PermCheckId.BATTERY_OPTIMIZATION, "Battery optimization exemption", isIgnoringBatteryOptimizations(context)),
+        PermCheck(PermCheckId.FULL_SCREEN_INTENT, "Alarms over the lock screen", canUseFullScreenIntent(context)),
+        PermCheck(PermCheckId.BATTERY_OPTIMIZATION, "Ignore battery limits (Max reliability)", isIgnoringBatteryOptimizations(context)),
     )
 }

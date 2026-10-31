@@ -1,5 +1,6 @@
 package com.joyel.tripguard.ui.screens
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -18,6 +19,10 @@ import com.joyel.tripguard.history.SavedPlace
 import com.joyel.tripguard.history.TripHistoryLogic
 import com.joyel.tripguard.history.TripOutcome
 import com.joyel.tripguard.location.LocationRepositoryHolder
+import com.joyel.tripguard.service.ACTION_START
+import com.joyel.tripguard.service.TripService
+import com.joyel.tripguard.trip.ReliabilityRepository
+import com.joyel.tripguard.trip.ReliabilityState
 import com.joyel.tripguard.trip.Trip
 import com.joyel.tripguard.trip.TripPrefill
 import com.joyel.tripguard.trip.TripPrefillHolder
@@ -25,12 +30,12 @@ import com.joyel.tripguard.trip.TripRepository
 import com.joyel.tripguard.trip.TripState
 import com.joyel.tripguard.ui.Routes
 import com.joyel.tripguard.ui.components.LocationStatusSection
-import com.joyel.tripguard.ui.permissions.PermCheckId
-import com.joyel.tripguard.ui.permissions.buildPermissionChecklist
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(navController: NavController) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var lastTrip by remember { mutableStateOf<Trip?>(null) }
     val locationRepo = remember { LocationRepositoryHolder.get(context) }
     val locationState by locationRepo.state.collectAsState()
@@ -40,24 +45,26 @@ fun HomeScreen(navController: NavController) {
     val recentTrips by historyRepo.observeRecentTrips(3).collectAsState(initial = emptyList())
     val savedPlaces by historyRepo.observeSavedPlaces().collectAsState(initial = emptyList())
 
-    var reminderDismissed by remember { mutableStateOf(false) }
-    val missingReminder = remember(reminderDismissed) {
-        if (reminderDismissed) null
-        else buildPermissionChecklist(context).firstOrNull {
-            !it.granted && it.id in setOf(PermCheckId.BACKGROUND_LOCATION, PermCheckId.BATTERY_OPTIMIZATION)
-        }
-    }
+    val reliabilityRepo = remember { ReliabilityRepository(context) }
+    val reliabilityState by reliabilityRepo.observe().collectAsState(initial = ReliabilityState())
+    val showReliabilityCard = reliabilityRepo.shouldShowCard(reliabilityState)
 
     LaunchedEffect(Unit) {
         val trip = TripRepository(context).getActiveTrip()
         lastTrip = trip
         val unfinished = historyRepo.getUnfinishedTrips()
+        var foundInterrupted = false
         unfinished.forEach { row ->
             if (trip == null || trip.id != row.id || trip.state == TripState.FINISHED) {
                 historyRepo.updateTrip(TripHistoryLogic.finish(row, System.currentTimeMillis(), TripOutcome.INTERRUPTED))
+                foundInterrupted = true
             }
         }
+        if (foundInterrupted) reliabilityRepo.markInterruptionDetected()
         if (trip != null && trip.state != TripState.FINISHED) {
+            // The system may have killed the app/service; (re)start the foreground service from
+            // this visible Activity so tracking resumes even without background location (v1.5).
+            context.startForegroundService(Intent(context, TripService::class.java).setAction(ACTION_START))
             navController.navigate(Routes.ACTIVE) { popUpTo(Routes.HOME) { inclusive = true } }
         }
     }
@@ -105,34 +112,29 @@ fun HomeScreen(navController: NavController) {
                 Text("Settings", color = Color.White)
             }
 
-            missingReminder?.let { reminder ->
+            if (showReliabilityCard) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.DarkGray),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Allow ${reminder.label.lowercase()} so alarms keep working",
-                            color = Color.White,
-                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                            "Your phone stopped Knock Me during the last trip. Turn on Max reliability to prevent this.",
+                            color = Color.White
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 12.dp)) {
                             Button(
                                 colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White),
-                                onClick = { navController.navigate(Routes.ONBOARDING) }
+                                onClick = { navController.navigate(Routes.RELIABILITY) }
                             ) {
-                                Text("Fix", color = Color.White)
+                                Text("Turn on", color = Color.White)
                             }
-                            TextButton(onClick = { reminderDismissed = true }) {
-                                Text("Dismiss", color = Color.Cyan)
+                            TextButton(onClick = {
+                                scope.launch { reliabilityRepo.dismissCardForSevenDays() }
+                            }) {
+                                Text("Not now", color = Color.Cyan)
                             }
                         }
                     }

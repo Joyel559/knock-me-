@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 private const val NOTIFICATION_ID = 1001
+private const val RESUME_NOTIFICATION_ID = 1002
 private const val GEOFENCE_ID = "arrival"
 const val ACTION_START = "com.joyel.tripguard.action.START"
 const val ACTION_STOP = "com.joyel.tripguard.action.STOP"
@@ -47,12 +48,14 @@ const val ACTION_DISMISS_ARRIVAL = "com.joyel.tripguard.action.DISMISS_ARRIVAL"
 const val ACTION_DISMISS_FINAL_ARRIVAL = "com.joyel.tripguard.action.DISMISS_FINAL_ARRIVAL"
 const val ACTION_REROUTE = "com.joyel.tripguard.action.REROUTE"
 const val ACTION_IGNORE_ROUTE = "com.joyel.tripguard.action.IGNORE_ROUTE"
+const val ACTION_DISMISS_TRACKING_STOPPED = "com.joyel.tripguard.action.DISMISS_TRACKING_STOPPED"
 
 class TripService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob())
     private lateinit var repository: TripRepository
     private lateinit var historyRepo: HistoryRepository
+    private lateinit var heartbeatRepo: HeartbeatRepository
     private lateinit var locationClient: LocationClient
     private lateinit var geofencingClient: GeofencingClient
     private var engine: TripEngine? = null
@@ -79,6 +82,7 @@ class TripService : Service() {
         super.onCreate()
         repository = TripRepository(applicationContext)
         historyRepo = HistoryRepository(applicationContext)
+        heartbeatRepo = HeartbeatRepository(applicationContext)
         locationClient = LocationClient(applicationContext)
         geofencingClient = LocationServices.getGeofencingClient(applicationContext)
         registerReceiver(
@@ -182,10 +186,49 @@ class TripService : Service() {
                 reRouteFromHere()
                 return START_STICKY
             }
-            else -> startForeground(NOTIFICATION_ID, buildNotification("Starting…"))
+            ACTION_DISMISS_TRACKING_STOPPED -> {
+                AlarmController.dismiss(applicationContext)
+                if (trackingJob?.isActive != true) {
+                    startForeground(NOTIFICATION_ID, buildNotification("Resuming your trip…"))
+                    beginTracking()
+                }
+                return START_STICKY
+            }
+            else -> {
+                // v1.5 lean mode: a system restart (null/unrecognized intent, e.g. after the OS
+                // killed this process) can land here without a foreground Activity involved. On
+                // newer Android that can throw instead of starting — never crash or loop, just
+                // tell the user to reopen the app.
+                val started = runCatching { startForeground(NOTIFICATION_ID, buildNotification("Starting…")) }
+                if (started.isFailure) {
+                    postResumeNotification()
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+            }
         }
         beginTracking()
         return START_STICKY
+    }
+
+    /** "Knock Me stopped tracking. Tap to resume" — shown when the service could not restart
+     * itself as a foreground location service (e.g. system restart with no background location). */
+    private fun postResumeNotification() {
+        val contentIntent = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val notification = androidx.core.app.NotificationCompat.Builder(this, com.joyel.tripguard.CHANNEL_ALARM)
+            .setSmallIcon(com.joyel.tripguard.R.drawable.ic_notification)
+            .setContentTitle("Knock Me stopped tracking")
+            .setContentText("Tap to resume")
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_ALARM)
+            .setFullScreenIntent(contentIntent, true)
+            .setContentIntent(contentIntent)
+            .setAutoCancel(true)
+            .build()
+        androidx.core.app.NotificationManagerCompat.from(this).notify(RESUME_NOTIFICATION_ID, notification)
     }
 
     private fun afterDismiss() {
@@ -247,7 +290,11 @@ class TripService : Service() {
             offRouteConsecutiveRequired = settings.routeConsecutiveCount
         )
         engine = tripEngine
-        addArrivalGeofence(trip)
+        // Lean mode (v1.5): rely on the location stream alone; geofence backup is Max-mode only.
+        if (com.joyel.tripguard.trip.ReliabilityRepository(applicationContext).get().maxReliabilityEnabled) {
+            addArrivalGeofence(trip)
+        }
+        WatchdogScheduler.scheduleNext(applicationContext)
 
         val fromState = com.joyel.tripguard.location.LocationRepositoryHolder.get(applicationContext).state.value
         val fromLatLon = (fromState as? com.joyel.tripguard.location.LocationState.Ready)
@@ -281,6 +328,7 @@ class TripService : Service() {
             val events = tripEngine.process(fix, nowElapsed)
             val distance = haversineMeters(fix.latLon, tripEngine.trip.destination)
             specFlow.value = intervalFor(tripEngine.trip.mode, distance)
+            scope.launch { heartbeatRepo.recordHeartbeat(nowElapsed) }
 
             lastFixLatLon?.let { traveledMeters += haversineMeters(it, fix.latLon) }
             lastFixLatLon = fix.latLon
@@ -427,6 +475,7 @@ class TripService : Service() {
     private fun stopTracking() {
         stalenessJob?.cancel()
         trackingJob?.cancel()
+        WatchdogScheduler.cancel(applicationContext)
     }
 
     private fun buildNotification(text: String) =

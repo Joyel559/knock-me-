@@ -10,7 +10,7 @@ import com.joyel.tripguard.CHANNEL_ALARM
 import com.joyel.tripguard.R
 import com.joyel.tripguard.ui.AlarmActivity
 
-enum class AlarmKind { ARRIVAL, FINAL_ARRIVAL, OFF_ROUTE, GPS_OFF, NO_FIX, LOW_BATTERY }
+enum class AlarmKind { ARRIVAL, FINAL_ARRIVAL, OFF_ROUTE, GPS_OFF, NO_FIX, LOW_BATTERY, TRACKING_STOPPED }
 
 private const val ALARM_NOTIFICATION_ID = 2001
 private const val SHORT_ALERT_NOTIFICATION_ID = 2002
@@ -46,6 +46,7 @@ object AlarmController {
         val dismissAction = when (kind) {
             AlarmKind.FINAL_ARRIVAL -> ACTION_DISMISS_FINAL_ARRIVAL
             AlarmKind.OFF_ROUTE -> ACTION_IGNORE_ROUTE
+            AlarmKind.TRACKING_STOPPED -> ACTION_DISMISS_TRACKING_STOPPED
             else -> ACTION_DISMISS_ARRIVAL
         }
         val dismissIntent = Intent(context, TripService::class.java).setAction(dismissAction)
@@ -77,6 +78,8 @@ object AlarmController {
             builder.addAction(R.drawable.ic_notification, "Re-route", reroutePending)
             builder.addAction(R.drawable.ic_notification, "Ignore 10m", dismissPendingIntent)
             builder.addAction(R.drawable.ic_notification, "Stop Trip", stopPendingIntent)
+        } else if (kind == AlarmKind.TRACKING_STOPPED) {
+            builder.addAction(R.drawable.ic_notification, "Resume", dismissPendingIntent)
         } else {
             builder.addAction(R.drawable.ic_notification, "I'm Awake", dismissPendingIntent)
             builder.addAction(R.drawable.ic_notification, "Stop Alarm", stopPendingIntent)

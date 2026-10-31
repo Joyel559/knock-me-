@@ -234,6 +234,11 @@ fun SettingsScreen(navController: NavController) {
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White),
                 onClick = { navController.navigate(Routes.SAVED_PLACES) }
             ) { Text("Saved places", color = Color.White) }
+            Button(
+                modifier = Modifier.padding(top = 8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White),
+                onClick = { navController.navigate(Routes.RELIABILITY) }
+            ) { Text("Reliability", color = Color.White) }
 
             var showClearConfirm by remember { mutableStateOf(false) }
             OutlinedButton(

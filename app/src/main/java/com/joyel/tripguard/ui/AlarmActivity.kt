@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.joyel.tripguard.service.ACTION_DISMISS_ARRIVAL
 import com.joyel.tripguard.service.ACTION_DISMISS_FINAL_ARRIVAL
+import com.joyel.tripguard.service.ACTION_DISMISS_TRACKING_STOPPED
 import com.joyel.tripguard.service.ACTION_IGNORE_ROUTE
 import com.joyel.tripguard.service.ACTION_REROUTE
 import com.joyel.tripguard.service.ACTION_STOP
@@ -78,6 +79,20 @@ class AlarmActivity : ComponentActivity() {
                         onReroute = { sendAndFinish(ACTION_REROUTE) },
                         onIgnore = { sendAndFinish(ACTION_IGNORE_ROUTE) },
                         onStop = { sendAndFinish(ACTION_STOP) }
+                    )
+                } else if (kind == AlarmKind.TRACKING_STOPPED) {
+                    ResumeAlarmScreen(
+                        title = title,
+                        message = message,
+                        onResume = {
+                            AlarmController.dismiss(this)
+                            startService(Intent(this, TripService::class.java).setAction(ACTION_DISMISS_TRACKING_STOPPED))
+                            startActivity(
+                                Intent(this, MainActivity::class.java)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            )
+                            finish()
+                        }
                     )
                 } else {
                     AlarmScreen(
@@ -143,6 +158,39 @@ private fun AlarmScreen(title: String, message: String, onAwake: () -> Unit, onS
             modifier = Modifier.padding(top = 16.dp).height(56.dp)
         ) {
             Text("Stop Trip", color = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun ResumeAlarmScreen(title: String, message: String, onResume: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineSmall,
+            color = Color.White,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = message,
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.LightGray,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 16.dp, bottom = 32.dp)
+        )
+        Button(
+            onClick = onResume,
+            modifier = Modifier.height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White)
+        ) {
+            Text("Resume", color = Color.White)
         }
     }
 }

@@ -109,6 +109,8 @@ fun TripSetupScreen(navController: NavController) {
     var savedPlaceTargetField by remember { mutableStateOf(EditingField.TO) }
     var showCustomRadiusDialog by remember { mutableStateOf(false) }
     var showSavePlaceDialog by remember { mutableStateOf(false) }
+    var showFullScreenIntentAsk by remember { mutableStateOf(false) }
+    var pendingStartDest by remember { mutableStateOf<LatLon?>(null) }
     var savePlaceNameText by remember { mutableStateOf("") }
 
     val locationRepo = remember { LocationRepositoryHolder.get(context) }
@@ -195,27 +197,7 @@ fun TripSetupScreen(navController: NavController) {
 
     fun effectiveRadiusMeters(): Int = radiusMeters
 
-    fun startTrip(skipInsideCheck: Boolean) {
-        val dest = destination
-        if (dest == null) {
-            errorText = "Set destination To first"
-            return
-        }
-        val checklist = buildPermissionChecklist(context)
-        val missingCritical = checklist.filter {
-            it.id == PermCheckId.FINE_LOCATION ||
-                it.id == PermCheckId.BACKGROUND_LOCATION ||
-                it.id == PermCheckId.NOTIFICATIONS
-        }.any { !it.granted }
-        if (missingCritical) {
-            navController.navigate(Routes.ONBOARDING)
-            return
-        }
-        if (!checklist.first { it.id == PermCheckId.GPS_ENABLED }.granted) {
-            errorText = "Turn on GPS, then try again"
-            return
-        }
-
+    fun proceedWithStart(dest: LatLon, skipInsideCheck: Boolean) {
         starting = true
         scope.launch {
             locationRepo.start()
@@ -262,6 +244,44 @@ fun TripSetupScreen(navController: NavController) {
             MemoryMirror.requestWrite(context)
             starting = false
             navController.navigate(Routes.ACTIVE) { popUpTo(Routes.HOME) }
+        }
+    }
+
+    fun startTrip(skipInsideCheck: Boolean) {
+        val dest = destination
+        if (dest == null) {
+            errorText = "Set destination To first"
+            return
+        }
+        val checklist = buildPermissionChecklist(context)
+        val missingCritical = checklist.filter {
+            it.id == PermCheckId.FINE_LOCATION || it.id == PermCheckId.NOTIFICATIONS
+        }.any { !it.granted }
+        if (missingCritical) {
+            navController.navigate(Routes.ONBOARDING)
+            return
+        }
+        if (!checklist.first { it.id == PermCheckId.GPS_ENABLED }.granted) {
+            errorText = "Turn on GPS, then try again"
+            return
+        }
+
+        starting = true
+        scope.launch {
+            // Lean mode (v1.5): ask for the full-screen alarm permission at most once, only when
+            // the OS actually requires it, right before the first trip — never during onboarding.
+            if (android.os.Build.VERSION.SDK_INT >= 34 &&
+                !com.joyel.tripguard.ui.permissions.canUseFullScreenIntent(context)
+            ) {
+                val onboardingRepo = com.joyel.tripguard.ui.onboarding.OnboardingRepository(context)
+                if ("FULL_SCREEN_INTENT" !in onboardingRepo.skippedSteps()) {
+                    starting = false
+                    pendingStartDest = dest
+                    showFullScreenIntentAsk = true
+                    return@launch
+                }
+            }
+            proceedWithStart(dest, skipInsideCheck)
         }
     }
 
@@ -854,6 +874,45 @@ fun TripSetupScreen(navController: NavController) {
             },
             dismissButton = {
                 TextButton(onClick = { showSavePlaceDialog = false }) { Text("Cancel", color = Color.White) }
+            }
+        )
+    }
+
+    if (showFullScreenIntentAsk) {
+        AlertDialog(
+            onDismissRequest = { showFullScreenIntentAsk = false },
+            containerColor = Color.Black,
+            title = { Text("Alarms over the lock screen", color = Color.White) },
+            text = {
+                Text(
+                    "So the arrival alarm can wake your screen even while it's locked. " +
+                        "If you skip this, Knock Me will still alert you with a sound and a notification.",
+                    color = Color.LightGray
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        com.joyel.tripguard.ui.onboarding.OnboardingRepository(context).skip("FULL_SCREEN_INTENT")
+                        context.startActivity(
+                            Intent(
+                                android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                                android.net.Uri.parse("package:${context.packageName}")
+                            )
+                        )
+                        showFullScreenIntentAsk = false
+                        pendingStartDest?.let { proceedWithStart(it, false) }
+                    }
+                }) { Text("Allow", color = Color.White) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        com.joyel.tripguard.ui.onboarding.OnboardingRepository(context).skip("FULL_SCREEN_INTENT")
+                        showFullScreenIntentAsk = false
+                        pendingStartDest?.let { proceedWithStart(it, false) }
+                    }
+                }) { Text("Skip", color = Color.White) }
             }
         )
     }

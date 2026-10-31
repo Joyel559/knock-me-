@@ -7,6 +7,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -90,13 +91,19 @@ fun PermissionsChecklist(modifier: Modifier = Modifier) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = (if (check.granted) "● " else "○ ") + check.label,
-                    color = if (check.granted) TgWhite else TgGrey
-                )
+                Column {
+                    Text(check.label, color = TgWhite)
+                    Text(if (check.granted) "Allowed" else "Not allowed", color = TgGrey, style = MaterialTheme.typography.bodySmall)
+                }
                 if (!check.granted) {
-                    Button(onClick = { fix(check.id) }) {
-                        Text("Fix")
+                    Button(
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                            containerColor = androidx.compose.ui.graphics.Color.Black,
+                            contentColor = TgWhite
+                        ),
+                        onClick = { fix(check.id) }
+                    ) {
+                        Text("Allow")
                     }
                 }
             }
