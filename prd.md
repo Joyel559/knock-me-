@@ -313,3 +313,31 @@ Persist the active trip in DataStore as JSON so it survives process death and re
 - **Saved places & recent trips:** Room-backed trip history and saved places powering recent trip chips and saved place chips on Trip Setup and Home. Visible History button on Home observing Room Flow.
 - **Memory file mirroring & export/import:** Automatic debounced JSON mirroring of Room data to `Documents/Knock Me Memory/knock_me_memory.json` via MediaStore (Android 10+) or legacy external storage. Settings integration featuring file path display, Export now, Import from file (SAF picker supporting re-importing trips and saved places after reinstalling), and clear history.
 
+
+## 19. v1.4 changes ("better search, paste, custom meters")
+
+- **Custom final-alarm and main-radius meters:** `Trip.finalAlarmMeters` (default 300m) replaces
+  the old fixed 300m constant; both the main radius and the final alarm now support preset chips
+  plus a "Custom" dialog down to single meters (km/m toggle on the main radius, meters-only for
+  the final alarm), with the final alarm auto-corrected to stay smaller than the main radius.
+  Settings gained matching default-radius-in-meters and default-final-alarm controls. A new shared
+  `KnockDistanceChipsRow`/`KnockCustomDistanceDialog` component pair backs all of these. Room
+  bumped to v3 to record `finalAlarmMeters` per trip history row and in the memory-mirror JSON.
+- **No-API-key place search:** `PlaceSearchRepository` runs local saved/recent places, Photon
+  (`photon.komoot.io`), and Nominatim in parallel (6s timeout each, failures never block or
+  crash), merges/dedupes/ranks the results (pure, unit-tested `mergePlaceResults`), and caches
+  them (in-memory LRU + a 7-day Room cache). Trip Setup's destination fields now debounce-search
+  (600ms, min 3 chars, cancel-previous via Compose's `LaunchedEffect` key restart), show a
+  progress indicator, tag local results "Saved"/"Recent", show local places on focus even before
+  typing, and show a calm "No match" card (Pick on map / Try again) instead of any raw error.
+- **Paste/share parser rewrite:** `ShareIntentParser` now understands Google Maps share text
+  (name + address + short link), long and short Maps URLs (`!3d!4d` pin coordinates, `@lat,lon`,
+  `q=`/`query=`/`ll=`/`destination=`/`daddr=`, and the `/maps/place/<name>` path), `geo:` URIs
+  (including `geo:0,0?q=name`), decimal and DMS coordinates, and full or short Plus Codes (Open
+  Location Code, decoded with a from-the-source Kotlin port of Google's own algorithm, verified
+  against their official test vectors — see `docs/DECISIONS.md`). Redirect resolution and
+  geocoding both sit behind small interfaces (`RedirectResolver`, `GeocodeProvider`) so the parser
+  is unit tested with fakes, no network calls in tests. Every parse result now carries a real
+  label (never raw coordinates as the main label) and is shown in a confirmation card ("Use this"
+  / "Pick on map instead") before it's committed — used by Paste, auto-detected pasted links in
+  the To field, and the incoming share/VIEW intent alike.

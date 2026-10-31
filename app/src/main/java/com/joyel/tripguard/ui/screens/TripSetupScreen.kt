@@ -29,6 +29,7 @@ import com.joyel.tripguard.search.PlaceResult
 import com.joyel.tripguard.search.PlaceSearchRepository
 import com.joyel.tripguard.service.ACTION_START
 import com.joyel.tripguard.service.TripService
+import com.joyel.tripguard.share.ParsedDestination
 import com.joyel.tripguard.share.ShareIntentParser
 import com.joyel.tripguard.share.SharedDestinationHolder
 import com.joyel.tripguard.trip.Mode
@@ -49,6 +50,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
+private val DECIMAL_LOOKS_LIKE_COORDS = Regex("""-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+""")
 private val MAIN_RADIUS_PRESETS_M = listOf(1000, 2000, 3000, 5000)
 private val FINAL_ALARM_PRESETS_M = listOf(100, 200, 300, 500)
 private const val DEFAULT_CENTER_LAT = 12.9716
@@ -81,6 +83,20 @@ fun TripSetupScreen(navController: NavController) {
     var finalAlarmEnabled by remember { mutableStateOf(false) }
     var finalAlarmMeters by remember { mutableStateOf(com.joyel.tripguard.trip.DEFAULT_FINAL_ALARM_RADIUS_M) }
     var showCustomFinalDialog by remember { mutableStateOf(false) }
+    var pendingConfirmation by remember { mutableStateOf<ParsedDestination?>(null) }
+    var pasteBusy by remember { mutableStateOf(false) }
+
+    fun applyParsed(parsed: ParsedDestination) {
+        pendingConfirmation = parsed
+    }
+
+    fun confirmPending() {
+        val parsed = pendingConfirmation ?: return
+        destination = parsed.location
+        destLabel = parsed.label
+        toQuery = parsed.label
+        pendingConfirmation = null
+    }
 
     var errorText by remember { mutableStateOf<String?>(null) }
     var showAlreadyInsideDialog by remember { mutableStateOf(false) }
@@ -116,11 +132,7 @@ fun TripSetupScreen(navController: NavController) {
 
     LaunchedEffect(Unit) {
         while (SharedDestinationHolder.resolving) kotlinx.coroutines.delay(150)
-        SharedDestinationHolder.pending?.let {
-            destination = it
-            destLabel = "Shared location"
-            toQuery = "Shared location"
-        }
+        SharedDestinationHolder.pending?.let { applyParsed(it) }
         if (SharedDestinationHolder.parseFailed) {
             errorText = "Could not read location, search manually"
         }
@@ -353,9 +365,20 @@ fun TripSetupScreen(navController: NavController) {
                     OutlinedTextField(
                         value = toQuery,
                         onValueChange = { q ->
+                            val previousLength = toQuery.length
                             toQuery = q
                             destLabel = q
                             activeEditingField = EditingField.TO
+                            val pastedChunk = q.length - previousLength >= 15
+                            val looksShareable = "http" in q || "geo:" in q || DECIMAL_LOOKS_LIKE_COORDS.containsMatchIn(q)
+                            if (pastedChunk && looksShareable && !pasteBusy) {
+                                pasteBusy = true
+                                scope.launch {
+                                    val parsed = ShareIntentParser().parse(q, near = currentReadyLatLon)
+                                    pasteBusy = false
+                                    if (parsed != null) applyParsed(parsed)
+                                }
+                            }
                         },
                         label = { Text("To (Destination)*", color = Color.LightGray) },
                         colors = OutlinedTextFieldDefaults.colors(
@@ -394,27 +417,26 @@ fun TripSetupScreen(navController: NavController) {
                             savedPlaceTargetField = EditingField.TO
                             showSavedPlacesDropdown = true
                         }) { Text("Saved places", color = Color.White) }
-                        TextButton(onClick = {
+                        TextButton(enabled = !pasteBusy, onClick = {
                             scope.launch {
                                 val cm = context.getSystemService(android.content.ClipboardManager::class.java)
                                 val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString()
                                 if (!clip.isNullOrBlank()) {
-                                    val parsed = ShareIntentParser().parse(clip)
+                                    pasteBusy = true
+                                    val parsed = ShareIntentParser().parse(clip, near = currentReadyLatLon)
+                                    pasteBusy = false
                                     if (parsed != null) {
-                                        destination = parsed
-                                        destLabel = "Pasted location"
-                                        toQuery = "Pasted location"
+                                        applyParsed(parsed)
                                     } else {
+                                        errorText = "Could not read a location from that, search manually"
                                         toQuery = clip
-                                        destLabel = clip
-                                        searchResults = nominatim.search(clip).take(5)
                                         activeEditingField = EditingField.TO
                                     }
                                 } else {
                                     errorText = "Nothing copied yet"
                                 }
                             }
-                        }) { Text("Paste", color = Color.White) }
+                        }) { Text(if (pasteBusy) "Reading…" else "Paste", color = Color.White) }
                         TextButton(onClick = {
                             currentReadyLatLon?.let {
                                 destination = it
@@ -511,6 +533,44 @@ fun TripSetupScreen(navController: NavController) {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // CONFIRMATION CARD for a just-parsed paste/share destination
+            pendingConfirmation?.let { parsed ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.DarkGray),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("Found this place", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                        if (parsed.isCoordinateLabel) {
+                            Text(parsed.label, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            Text(parsed.label, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "%.5f, %.5f".format(parsed.location.lat, parsed.location.lon),
+                                color = Color.Gray,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Box(modifier = Modifier.fillMaxWidth().height(120.dp).padding(top = 8.dp)) {
+                            TripMap(
+                                modifier = Modifier.fillMaxSize(),
+                                center = parsed.location,
+                                destination = parsed.location,
+                                radiusMeters = null
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                            TextButton(onClick = { confirmPending() }) { Text("Use this", color = Color.White) }
+                            TextButton(onClick = {
+                                pickerTargetField = EditingField.TO
+                                showFullScreenMapPicker = true
+                                pendingConfirmation = null
+                            }) { Text("Pick on map instead", color = Color.White) }
                         }
                     }
                 }

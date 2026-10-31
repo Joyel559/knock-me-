@@ -49,6 +49,8 @@ class MainActivity : ComponentActivity() {
             SharedDestinationHolder.resolving = true
             lifecycleScope.launch {
                 val result = ShareIntentParser().parse(sharedText)
+                // "near" (current location) isn't available this early in a cold start, so the
+                // parse runs unbiased here; Trip Setup's own Paste button passes it when it has one.
                 SharedDestinationHolder.pending = result
                 SharedDestinationHolder.parseFailed = result == null
                 SharedDestinationHolder.resolving = false
