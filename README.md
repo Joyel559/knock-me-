@@ -83,13 +83,30 @@ Everything stays on your phone. No accounts, no analytics, no cloud sync. The on
 calls are to the keyless public Nominatim and OSRM services, used to search for places and
 fetch a route — no personal data is sent beyond the coordinates needed for that single request.
 
-## Permissions and why each is needed
+## Permissions: Lean mode vs Max reliability
 
-- **Location (fine/coarse)** — required to track your position and detect arrival/off-route.
-- **Background location** — the trip keeps tracking while the app isn't on screen.
-- **Notifications** — the foreground-service status and the alarm itself are notifications.
-- **Full-screen intent / alarm** — lets the alarm wake and show over the lock screen.
-- **Battery optimization exemption** — stops Android from killing tracking during a long trip.
+By default (Lean mode) a fresh install asks for only two things:
+
+- **Location, while you use Knock Me** — needed to know where you are.
+- **Notifications** — needed to show your trip and ring the alarm.
+
+That's enough for tracking to keep working with the screen locked, the same way Google Maps
+navigation does — Android allows a running foreground location service to keep getting fixes
+without the broader "Allow all the time" permission. A third permission, **alarms over the lock
+screen**, is only asked (once, skippable) right before your first trip, and only on Android
+versions that require it.
+
+If your phone is known to be aggressive about killing background apps, Settings → Reliability
+has an optional **Max reliability** switch. Turning it on asks for two more things:
+
+- **Location, all the time** — so a geofence backup can also catch arrival if the main
+  tracking loop ever gets interrupted.
+- **Ignore battery limits** — stops the system from pausing Knock Me during a long trip.
+
+Max reliability also enables resuming your trip automatically after a phone reboot, and shows
+brand-specific steps (Xiaomi, Oppo, Realme, Vivo, OnePlus, Samsung, Huawei, Honor) for turning
+off that manufacturer's own background-app killer. Knock Me will also show a one-time card on
+Home — only after it actually detects a trip got interrupted — suggesting you turn this on.
 
 ## Known limits (honest)
 

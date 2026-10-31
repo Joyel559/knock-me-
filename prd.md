@@ -341,3 +341,38 @@ Persist the active trip in DataStore as JSON so it survives process death and re
   label (never raw coordinates as the main label) and is shown in a confirmation card ("Use this"
   / "Pick on map instead") before it's committed — used by Paste, auto-detected pasted links in
   the To field, and the incoming share/VIEW intent alike.
+
+## 20. v1.5 changes ("remove scary permission prompts, keep tracking reliable")
+
+- **Lean mode (default):** first launch asks only for Location ("while using the app") and
+  Notifications. Background location ("Allow all the time"), battery-exemption, and the
+  full-screen-alarm permission are never requested during onboarding or shown on Home. The
+  full-screen-alarm permission is asked once, skippably, right before the user's first trip, and
+  only on Android versions that actually require it. Tracking still works with the screen off
+  during a trip — the same mechanism Google Maps navigation uses: a running foreground service
+  with `foregroundServiceType="location"` keeps receiving fixes on fine/coarse ("while in use")
+  permission alone, no background location needed.
+- **Geofence backup and reboot-resume are Max-mode only.** In Lean mode the arrival alarm relies
+  solely on the live location stream; `BootReceiver` does nothing after a reboot (starting a new
+  location-type foreground service from a background broadcast would be refused by the OS
+  without background location, which Lean mode never holds) — instead the trip resumes
+  automatically, from the foreground, the next time the user opens the app.
+- **Service-restart safety net:** if the system restarts the service in a context where starting
+  the foreground service fails, Knock Me posts a plain "Knock Me stopped tracking. Tap to
+  resume" notification and stops cleanly, instead of crashing or looping.
+- **Watchdog (dead-man check):** while a trip is active, a heartbeat timestamp is written (at
+  most once per 30s) on every accepted GPS fix. A self-rescheduling alarm chain checks it every 4
+  minutes (needs no special permission, works in Doze); if the heartbeat is more than 3 minutes
+  stale, Knock Me rings a loud "Tracking stopped" alert and marks the trip history row
+  INTERRUPTED, at most once every 10 minutes.
+- **Ask only when needed:** after a trip is found interrupted (at startup or by the watchdog),
+  Home shows one calm card — "Your phone stopped Knock Me during the last trip. Turn on Max
+  reliability to prevent this." — with "Turn on" / "Not now" (hides it for 7 days). It is never
+  shown on first launch or when nothing was interrupted.
+- **Max reliability (Settings → Reliability, optional):** a switch with a plain-words
+  explanation. Turning it on walks through background location, battery exemption, and (on
+  Xiaomi/Redmi/Poco, Oppo, Realme, Vivo, OnePlus, Samsung, Huawei, Honor) brand-specific
+  autostart steps, with live status that rechecks when you return to the screen. Only when this
+  is on does Knock Me use the geofence backup or resume a trip automatically after a reboot.
+- **Copy:** every permission explanation was rewritten in plain, short words, and the first
+  onboarding screen adds: "Your location stays on your phone. No account, no tracking, no ads."
