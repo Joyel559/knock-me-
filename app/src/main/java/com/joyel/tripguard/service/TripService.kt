@@ -40,6 +40,7 @@ import kotlinx.coroutines.launch
 
 private const val NOTIFICATION_ID = 1001
 private const val RESUME_NOTIFICATION_ID = 1002
+private const val ARRIVED_NOTIFICATION_ID = 1003
 private const val GEOFENCE_ID = "arrival"
 const val ACTION_START = "com.joyel.tripguard.action.START"
 const val ACTION_STOP = "com.joyel.tripguard.action.STOP"
@@ -95,18 +96,10 @@ class TripService : Service() {
         AlarmController.dismiss(applicationContext)
         when (intent?.action) {
             ACTION_STOP -> {
-                AlarmController.dismiss(applicationContext)
                 scope.launch {
                     val trip = engine?.trip ?: repository.getActiveTrip()
                     if (trip?.state == TripState.ROUTE_ALARMING) logRouteAlarmEvent(RouteAlarmAction.STOP)
-                    engine?.stop()
-                    finishHistory(TripOutcome.STOPPED_EARLY)
-                    repository.saveActiveTrip(null)
-                    stopTracking()
-                    removeGeofence()
-                    MemoryMirror.requestWrite(applicationContext)
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
+                    finishTrip(TripOutcome.STOPPED_EARLY)
                 }
                 return START_NOT_STICKY
             }
@@ -120,27 +113,13 @@ class TripService : Service() {
                     val tripEngine = engine
                     if (tripEngine != null) {
                         tripEngine.dismissArrival()
-                        repository.saveActiveTrip(tripEngine.trip)
                         if (tripEngine.trip.state == TripState.FINISHED) {
-                            finishHistory(TripOutcome.ARRIVED)
-                            repository.saveActiveTrip(null)
-                            stopTracking()
-                            removeGeofence()
-                            MemoryMirror.requestWrite(applicationContext)
-                            stopForeground(STOP_FOREGROUND_REMOVE)
-                            stopSelf()
+                            finishTrip(TripOutcome.ARRIVED)
+                        } else {
+                            repository.saveActiveTrip(tripEngine.trip)
                         }
                     } else {
-                        val trip = repository.getActiveTrip()
-                        if (trip != null) {
-                            finishHistory(TripOutcome.ARRIVED)
-                        }
-                        repository.saveActiveTrip(null)
-                        stopTracking()
-                        removeGeofence()
-                        MemoryMirror.requestWrite(applicationContext)
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        stopSelf()
+                        finishTrip(TripOutcome.ARRIVED)
                     }
                 }
                 return START_STICKY
@@ -148,27 +127,8 @@ class TripService : Service() {
             ACTION_DISMISS_FINAL_ARRIVAL -> {
                 AlarmController.dismiss(applicationContext)
                 scope.launch {
-                    val tripEngine = engine
-                    if (tripEngine != null) {
-                        tripEngine.dismissFinalArrival()
-                        repository.saveActiveTrip(tripEngine.trip)
-                        if (tripEngine.trip.state == TripState.FINISHED) {
-                            finishHistory(TripOutcome.ARRIVED)
-                            repository.saveActiveTrip(null)
-                            stopTracking()
-                            removeGeofence()
-                            MemoryMirror.requestWrite(applicationContext)
-                            stopForeground(STOP_FOREGROUND_REMOVE)
-                            stopSelf()
-                        }
-                    } else {
-                        repository.saveActiveTrip(null)
-                        stopTracking()
-                        removeGeofence()
-                        MemoryMirror.requestWrite(applicationContext)
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        stopSelf()
-                    }
+                    engine?.dismissFinalArrival()
+                    finishTrip(TripOutcome.ARRIVED)
                 }
                 return START_STICKY
             }
@@ -233,25 +193,70 @@ class TripService : Service() {
 
     private fun afterDismiss() {
         val tripEngine = engine ?: return
-        scope.launch { repository.saveActiveTrip(tripEngine.trip) }
         if (tripEngine.trip.state == TripState.FINISHED) {
-            finishHistory(TripOutcome.ARRIVED)
-            stopTracking()
-            removeGeofence()
-            MemoryMirror.requestWrite(applicationContext)
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
+            scope.launch { finishTrip(TripOutcome.ARRIVED) }
+        } else {
+            scope.launch { repository.saveActiveTrip(tripEngine.trip) }
         }
     }
 
-    private fun finishHistory(outcome: TripOutcome) {
-        val row = historyRow ?: return
-        val updated = TripHistoryLogic.finish(row, System.currentTimeMillis(), outcome)
-        historyRow = updated
-        scope.launch {
-            historyRepo.updateTrip(updated)
-            MemoryMirror.requestWrite(applicationContext)
+    /** Stops the location subscription, staleness checks, watchdog chain and geofence — but
+     * leaves the trip history row, notification and service foreground state alone. Used the
+     * instant arrival is confirmed (final alarm off) so nothing but the alarm keeps running,
+     * and as the first step of [finishTrip]. */
+    private fun stopLocationOnly() {
+        stopTracking()
+        removeGeofence()
+    }
+
+    /**
+     * The single place every trip-ending path funnels through (arrived, stopped, timed out, GPS
+     * lost permanently): stops the alarm sound, all location/geofence/watchdog activity, clears
+     * the active trip, finalizes the TripHistory row, rewrites the memory file, cancels the
+     * tracking notification, shows a short self-dismissing summary notification for a real
+     * arrival, and tears down the foreground service. Call from the service's own coroutine
+     * scope (suspends to await the DataStore/Room writes before stopSelf()).
+     */
+    private suspend fun finishTrip(outcome: TripOutcome) {
+        AlarmController.dismiss(applicationContext)
+        stopLocationOnly()
+        engine?.stop()
+
+        val finishedRow = historyRow?.let { TripHistoryLogic.finish(it, System.currentTimeMillis(), outcome) }
+        historyRow = finishedRow
+        val destLabel = engine?.trip?.destLabel ?: finishedRow?.toLabel ?: "your destination"
+
+        repository.saveActiveTrip(null)
+        finishedRow?.let { historyRepo.updateTrip(it) }
+        MemoryMirror.requestWrite(applicationContext)
+
+        if (outcome == TripOutcome.ARRIVED) {
+            showArrivedNotification(destLabel)
         }
+        if (com.joyel.tripguard.BuildConfig.DEBUG) {
+            android.util.Log.d("TripService", "finishTrip($outcome): location/geofence/watchdog/service cleanup complete")
+        }
+
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    /** A plain, non-alarm notification confirming arrival that clears itself after 10 minutes. */
+    private fun showArrivedNotification(destLabel: String) {
+        val notification = NotificationCompat.Builder(this, CHANNEL_SERVICE)
+            .setSmallIcon(com.joyel.tripguard.R.drawable.ic_notification)
+            .setContentTitle("You have arrived at $destLabel")
+            .setContentText("Tracking stopped.")
+            .setAutoCancel(true)
+            .setTimeoutAfter(10 * 60_000L)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    this, 0, Intent(this, MainActivity::class.java),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+            )
+            .build()
+        androidx.core.app.NotificationManagerCompat.from(this).notify(ARRIVED_NOTIFICATION_ID, notification)
     }
 
     private fun logRouteAlarmEvent(action: RouteAlarmAction) {
@@ -287,7 +292,8 @@ class TripService : Service() {
         val tripEngine = TripEngine(
             trip,
             offRouteThresholdM = settings.routeThresholdM.toDouble(),
-            offRouteConsecutiveRequired = settings.routeConsecutiveCount
+            offRouteConsecutiveRequired = settings.routeConsecutiveCount,
+            maxTripDurationMs = settings.maxTripHours * 60L * 60 * 1000
         )
         engine = tripEngine
         // Lean mode (v1.5): rely on the location stream alone; geofence backup is Max-mode only.
@@ -349,13 +355,10 @@ class TripService : Service() {
             repository.saveActiveTrip(tripEngine.trip)
             events.forEach { handleEvent(it) }
 
-            if (tripEngine.trip.state == TripState.FINISHED) {
-                stopTracking()
-                removeGeofence()
-                MemoryMirror.requestWrite(applicationContext)
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            } else {
+            // A FINISHED state here means handleEvent() already called finishTrip() above
+            // (TripTimedOut/GpsLostPermanently), which is tearing the service down; skip
+            // reposting the tracking notification while that happens.
+            if (tripEngine.trip.state != TripState.FINISHED) {
                 updateNotification(distance)
             }
         }
@@ -372,6 +375,11 @@ class TripService : Service() {
                     maxVolume = currentSettings.maxVolumeOnAlarm,
                     vibrate = currentSettings.vibrateOnAlarm
                 )
+                // No final alarm to wait for: stop tracking/geofence/watchdog right away, the
+                // alarm keeps ringing until the user dismisses it (which calls finishTrip).
+                if (engine?.trip?.finalAlarmEnabled != true) {
+                    stopLocationOnly()
+                }
             }
             is TripEvent.FinalArrivalReached -> {
                 scope.launch { historyRow?.let { historyRepo.updateTrip(TripHistoryLogic.onArrivalAlarm(it, System.currentTimeMillis()).also { row -> historyRow = row }) } }
@@ -381,6 +389,7 @@ class TripService : Service() {
                     maxVolume = currentSettings.maxVolumeOnAlarm,
                     vibrate = currentSettings.vibrateOnAlarm
                 )
+                stopLocationOnly()
             }
             is TripEvent.OffRouteDetected -> {
                 pendingOffRouteMeters = event.offRouteM
@@ -402,6 +411,14 @@ class TripService : Service() {
             is TripEvent.GpsRecovered -> Unit
             is TripEvent.NoFixTooLong ->
                 AlarmController.raiseShortAlert(this, "No GPS fix", "No fix for over 5 minutes")
+            is TripEvent.GpsLostPermanently -> {
+                AlarmController.raiseShortAlert(this, "GPS lost", "No GPS fix for a long time, tracking stopped")
+                scope.launch { finishTrip(TripOutcome.GPS_LOST) }
+            }
+            is TripEvent.TripTimedOut -> {
+                AlarmController.raiseShortAlert(this, "Trip ended", "Trip ended after ${currentSettings.maxTripHours} hours")
+                scope.launch { finishTrip(TripOutcome.TIMED_OUT) }
+            }
         }
     }
 

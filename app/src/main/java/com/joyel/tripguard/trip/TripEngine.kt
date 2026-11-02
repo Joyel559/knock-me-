@@ -15,6 +15,10 @@ private const val ROUTE_COOLDOWN_MS = 5 * 60_000L
 private const val ROUTE_IGNORE_MS = 10 * 60_000L
 private const val GPS_WEAK_MS = 90_000L
 private const val NO_FIX_TOO_LONG_MS = 5 * 60_000L
+private const val GPS_LOST_PERMANENT_MS = 30 * 60_000L
+const val ARRIVAL_DWELL_RADIUS_M = 150.0
+const val ARRIVAL_DWELL_MS = 60_000L
+const val DEFAULT_MAX_TRIP_DURATION_MS = 36L * 60 * 60 * 1000
 
 /**
  * Pure logic: feed [Fix]es in, get [TripEvent]s out. No Android classes here so it is
@@ -23,7 +27,8 @@ private const val NO_FIX_TOO_LONG_MS = 5 * 60_000L
 class TripEngine(
     trip: Trip,
     private val offRouteThresholdM: Double = 500.0,
-    private val offRouteConsecutiveRequired: Int = 3
+    private val offRouteConsecutiveRequired: Int = 3,
+    private val maxTripDurationMs: Long = DEFAULT_MAX_TRIP_DURATION_MS
 ) {
     var trip: Trip = trip
         private set
@@ -32,6 +37,7 @@ class TripEngine(
 
     private var arrivalConsecutive = 0
     private var arrivalFired = false
+    private var dwellStartElapsed: Long? = null
     private var finalConsecutive = 0
     private var finalFired = false
 
@@ -57,16 +63,30 @@ class TripEngine(
             return events // stale, ignored entirely
         }
 
+        if (trip.state == TripState.ACTIVE && fix.timestampMs - trip.startedAt >= maxTripDurationMs) {
+            trip = trip.copy(state = TripState.FINISHED)
+            events += TripEvent.TripTimedOut
+            return events
+        }
+
         val distanceToDest = haversineMeters(fix.latLon, trip.destination)
 
-        // Arrival
+        // Arrival: radius reached for 2 consecutive fixes, OR within a looser 150m for 60s
+        // straight (catches a destination sitting just outside the chosen radius, e.g. a large
+        // bus stand/campus).
         if (!arrivalFired) {
             if (distanceToDest <= trip.radiusMeters) {
                 arrivalConsecutive++
             } else {
                 arrivalConsecutive = 0
             }
-            if (arrivalConsecutive >= ARRIVAL_CONSECUTIVE) {
+            if (distanceToDest <= ARRIVAL_DWELL_RADIUS_M) {
+                if (dwellStartElapsed == null) dwellStartElapsed = fix.elapsedRealtimeMs
+            } else {
+                dwellStartElapsed = null
+            }
+            val dwellSatisfied = dwellStartElapsed?.let { fix.elapsedRealtimeMs - it >= ARRIVAL_DWELL_MS } ?: false
+            if (arrivalConsecutive >= ARRIVAL_CONSECUTIVE || dwellSatisfied) {
                 arrivalFired = true
                 trip = trip.copy(state = TripState.ARRIVAL_ALARMING)
                 events += TripEvent.ArrivalReached(distanceToDest)
@@ -138,10 +158,14 @@ class TripEngine(
 
     /** Call periodically (not tied to a fix) to detect a stalled GPS stream. */
     fun checkStaleness(nowElapsedMs: Long): List<TripEvent> {
+        if (trip.state == TripState.FINISHED) return emptyList()
         val last = lastAcceptedFixElapsed ?: return emptyList()
         val silentFor = nowElapsedMs - last
         val events = mutableListOf<TripEvent>()
-        if (silentFor > NO_FIX_TOO_LONG_MS) {
+        if (silentFor > GPS_LOST_PERMANENT_MS) {
+            trip = trip.copy(state = TripState.FINISHED)
+            events += TripEvent.GpsLostPermanently
+        } else if (silentFor > NO_FIX_TOO_LONG_MS) {
             events += TripEvent.NoFixTooLong(silentFor)
         } else if (silentFor > GPS_WEAK_MS && !gpsWeakAnnounced) {
             gpsWeakAnnounced = true

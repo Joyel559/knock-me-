@@ -21,7 +21,8 @@ data class AppSettings(
     val routeConsecutiveCount: Int = 3,
     val defaultFinalAlarmEnabled: Boolean = false,
     val defaultFinalAlarmMeters: Int = DEFAULT_FINAL_ALARM_RADIUS_M,
-    val searchCountryCode: String? = null
+    val searchCountryCode: String? = null,
+    val maxTripHours: Int = 36
 ) {
     /** km rounded for display only; the stored value is always meters. */
     val defaultRadiusKm: Int get() = (defaultRadiusMeters / 1000.0).let { if (it < 1) 1 else it.toInt() }
@@ -36,6 +37,7 @@ private val KEY_ROUTE_CONSECUTIVE = intPreferencesKey("route_consecutive_count")
 private val KEY_FINAL_ENABLED = booleanPreferencesKey("default_final_alarm_enabled")
 private val KEY_FINAL_METERS = intPreferencesKey("default_final_alarm_meters")
 private val KEY_SEARCH_COUNTRY = stringPreferencesKey("search_country_code")
+private val KEY_MAX_TRIP_HOURS = intPreferencesKey("max_trip_hours")
 
 class SettingsRepository(private val context: Context) {
 
@@ -49,7 +51,8 @@ class SettingsRepository(private val context: Context) {
             routeConsecutiveCount = prefs[KEY_ROUTE_CONSECUTIVE] ?: 3,
             defaultFinalAlarmEnabled = prefs[KEY_FINAL_ENABLED] ?: false,
             defaultFinalAlarmMeters = prefs[KEY_FINAL_METERS] ?: DEFAULT_FINAL_ALARM_RADIUS_M,
-            searchCountryCode = prefs[KEY_SEARCH_COUNTRY]
+            searchCountryCode = prefs[KEY_SEARCH_COUNTRY],
+            maxTripHours = prefs[KEY_MAX_TRIP_HOURS] ?: 36
         )
     }
 
@@ -67,6 +70,7 @@ class SettingsRepository(private val context: Context) {
             prefs[KEY_FINAL_ENABLED] = next.defaultFinalAlarmEnabled
             prefs[KEY_FINAL_METERS] = next.defaultFinalAlarmMeters
             next.searchCountryCode?.let { prefs[KEY_SEARCH_COUNTRY] = it }
+            prefs[KEY_MAX_TRIP_HOURS] = next.maxTripHours
         }
     }
 }

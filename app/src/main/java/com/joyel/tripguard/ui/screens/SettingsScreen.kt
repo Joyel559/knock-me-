@@ -145,9 +145,11 @@ fun SettingsScreen(navController: NavController) {
 
             var thresholdText by remember { mutableStateOf("") }
             var consecutiveText by remember { mutableStateOf("") }
-            LaunchedEffect(settings.routeThresholdM, settings.routeConsecutiveCount) {
+            var maxTripHoursText by remember { mutableStateOf("") }
+            LaunchedEffect(settings.routeThresholdM, settings.routeConsecutiveCount, settings.maxTripHours) {
                 thresholdText = settings.routeThresholdM.toString()
                 consecutiveText = settings.routeConsecutiveCount.toString()
+                maxTripHoursText = settings.maxTripHours.toString()
             }
 
             Text("Route threshold (m)", color = Color.LightGray, modifier = Modifier.padding(top = 16.dp))
@@ -166,6 +168,18 @@ fun SettingsScreen(navController: NavController) {
                 onValueChange = { text ->
                     consecutiveText = text.filter { it.isDigit() }
                     consecutiveText.toIntOrNull()?.let { v -> scope.launch { repo.update { s -> s.copy(routeConsecutiveCount = v) } } }
+                },
+                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+            )
+
+            Text("Auto-stop a trip after (hours, 6-72)", color = Color.LightGray, modifier = Modifier.padding(top = 16.dp))
+            OutlinedTextField(
+                value = maxTripHoursText,
+                onValueChange = { text ->
+                    maxTripHoursText = text.filter { it.isDigit() }
+                    maxTripHoursText.toIntOrNull()?.let { v ->
+                        scope.launch { repo.update { s -> s.copy(maxTripHours = v.coerceIn(6, 72)) } }
+                    }
                 },
                 colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
             )

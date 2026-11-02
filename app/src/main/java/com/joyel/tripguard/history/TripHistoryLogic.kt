@@ -31,7 +31,8 @@ object TripHistoryLogic {
 
     fun onProgress(current: TripHistory, distanceMeters: Double, now: Long): TripHistory = current.copy(
         distanceMeters = distanceMeters,
-        durationSeconds = (now - current.startedAt) / 1000
+        durationSeconds = (now - current.startedAt) / 1000,
+        fixCount = current.fixCount + 1
     )
 
     fun onArrivalAlarm(current: TripHistory, now: Long): TripHistory = current.copy(

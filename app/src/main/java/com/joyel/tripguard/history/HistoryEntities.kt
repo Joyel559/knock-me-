@@ -6,7 +6,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.joyel.tripguard.trip.Mode
 
-enum class TripOutcome { ARRIVED, STOPPED_EARLY, GPS_LOST, INTERRUPTED }
+enum class TripOutcome { ARRIVED, STOPPED_EARLY, GPS_LOST, INTERRUPTED, TIMED_OUT }
 
 enum class RouteAlarmAction { REROUTE, IGNORE, STOP, TIMED_OUT }
 
@@ -25,6 +25,7 @@ data class TripHistory(
     val radiusMeters: Int,
     val finalAlarmMeters: Int? = null,
     val distanceMeters: Double,
+    val fixCount: Int = 0,
     val durationSeconds: Long,
     val arrivalAlarmRang: Boolean,
     val arrivalAlarmAt: Long?,

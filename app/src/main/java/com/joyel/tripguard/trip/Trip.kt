@@ -53,4 +53,6 @@ sealed class TripEvent {
     data class GpsWeak(val silentForMs: Long) : TripEvent()
     object GpsRecovered : TripEvent()
     data class NoFixTooLong(val silentForMs: Long) : TripEvent()
+    object GpsLostPermanently : TripEvent()
+    object TripTimedOut : TripEvent()
 }

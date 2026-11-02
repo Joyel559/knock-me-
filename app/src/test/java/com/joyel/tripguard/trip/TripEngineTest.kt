@@ -229,4 +229,89 @@ class TripEngineTest {
         assertTrue(events.isEmpty())
         assertEquals(TripState.FINISHED, engine.trip.state)
     }
+
+    // v1.6 part A: auto-stop at destination
+
+    @Test
+    fun `arrival fires from dwelling within 150m for 60s even outside the main radius`() {
+        // radius 20m is never reached, but the fix sits ~100m away (within the 150m dwell ring)
+        val engine = TripEngine(busTrip(radius = 20))
+        fun dwellFixAt(t: Long) = fix(0.0, 1.0 - 0.0009, 10f, t) // ~100m from (0,1) at the equator
+
+        assertTrue(engine.process(dwellFixAt(0L), 0L).isEmpty()) // dwell starts
+        assertTrue("should not fire before 60s of dwelling", engine.process(dwellFixAt(45_000L), 45_000L).isEmpty())
+        val atSixtySeconds = engine.process(dwellFixAt(60_000L), 60_000L)
+        assertTrue("60s of continuous dwell should fire arrival", atSixtySeconds.any { it is TripEvent.ArrivalReached })
+    }
+
+    @Test
+    fun `dwell timer resets if the fix leaves the 150m ring`() {
+        val engine = TripEngine(busTrip(radius = 20))
+        var t = 0L
+        engine.process(fix(0.0, 1.0 - 0.0009, 10f, t), t) // inside 150m, dwell starts
+        t += 50_000L
+        val leftRing = engine.process(fix(5.0, 5.0, 10f, t), t) // far away: dwell resets
+        assertTrue(leftRing.isEmpty())
+        t += 20_000L // would have been 70s of original dwell, but it reset at t=50_000
+        val backInside = engine.process(fix(0.0, 1.0 - 0.0009, 10f, t), t)
+        assertTrue("dwell must restart, not resume, after leaving the ring", backInside.isEmpty())
+    }
+
+    @Test
+    fun `a trip exceeding the max duration times out and fires no further events`() {
+        val engine = TripEngine(busTrip(radius = 50))
+        val maxMs = 36L * 60 * 60 * 1000
+        val farAway = Fix(lat = 5.0, lon = 5.0, accuracyM = 10f, timestampMs = maxMs + 1000, elapsedRealtimeMs = maxMs + 1000)
+        val events = engine.process(farAway, maxMs + 1000)
+        assertEquals(1, events.size)
+        assertTrue(events[0] is TripEvent.TripTimedOut)
+        assertEquals(TripState.FINISHED, engine.trip.state)
+
+        val after = engine.process(farAway.copy(elapsedRealtimeMs = maxMs + 2000, timestampMs = maxMs + 2000), maxMs + 2000)
+        assertTrue("no events after timeout", after.isEmpty())
+    }
+
+    @Test
+    fun `a custom max duration is honored`() {
+        val shortMax = 60_000L // 1 minute, for the test
+        val engine = TripEngine(busTrip(radius = 50), maxTripDurationMs = shortMax)
+        val fixAt30s = fix(5.0, 5.0, 10f, 30_000L)
+        assertTrue(engine.process(fixAt30s, 30_000L).isEmpty())
+        val fixAt61s = fix(5.0, 5.0, 10f, 61_000L)
+        assertTrue(engine.process(fixAt61s, 61_000L).any { it is TripEvent.TripTimedOut })
+    }
+
+    @Test
+    fun `GPS lost permanently fires once after 30 minutes of silence and finishes the trip`() {
+        val engine = TripEngine(cabTrip())
+        var t = 0L
+        t += 10_000
+        engine.process(fix(0.02, 0.5, 10f, t), t) // one accepted fix to establish lastAcceptedFixElapsed
+
+        t += 31 * 60_000L // 31 minutes of silence
+        val events = engine.checkStaleness(t)
+        assertEquals(1, events.size)
+        assertTrue(events[0] is TripEvent.GpsLostPermanently)
+        assertEquals(TripState.FINISHED, engine.trip.state)
+
+        val again = engine.checkStaleness(t + 60_000L)
+        assertTrue("no repeated staleness events once finished", again.isEmpty())
+    }
+
+    @Test
+    fun `starting a brand new engine after one has finished works normally`() {
+        val finished = TripEngine(busTrip(radius = 50))
+        finished.stop()
+        assertEquals(TripState.FINISHED, finished.trip.state)
+
+        val fresh = TripEngine(busTrip(radius = 50))
+        var t = 0L
+        repeat(2) {
+            t += 1000
+            engineEventsFor(fresh, t)
+        }
+        assertEquals(TripState.ARRIVAL_ALARMING, fresh.trip.state)
+    }
+
+    private fun engineEventsFor(engine: TripEngine, t: Long) = engine.process(fix(0.0, 1.0, 10f, t), t)
 }
