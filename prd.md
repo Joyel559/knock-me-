@@ -376,3 +376,32 @@ Persist the active trip in DataStore as JSON so it survives process death and re
   is on does Knock Me use the geofence backup or resume a trip automatically after a reboot.
 - **Copy:** every permission explanation was rewritten in plain, short words, and the first
   onboarding screen adds: "Your location stays on your phone. No account, no tracking, no ads."
+
+## 21. v1.6 changes ("auto-stop at destination" + "release-ready code")
+
+- **Auto-stop at destination:** the arrival rule now fires on the existing 2-consecutive-fix
+  radius check **or** a continuous 150m/60s dwell, catching a destination sitting just outside
+  the chosen radius. The moment arrival is confirmed (or, if the final alarm is on, the moment
+  the final alarm fires), Knock Me immediately stops location updates, the geofence, and the
+  watchdog chain — only the alarm keeps ringing. One consolidated `finishTrip(outcome)` function
+  runs on every ending path (arrived, stopped early, timed out, GPS lost permanently, or location
+  permission revoked mid-trip): stops the alarm, clears the active trip, finalizes the trip
+  history row, rewrites the memory file, shows a 10-minute self-dismissing "arrived" notification,
+  and tears down the foreground service — so nothing keeps running after a trip ends. A safety
+  cap (default 36 hours, Settings-editable 6-72) ends a trip automatically if it somehow never
+  gets dismissed.
+- **Release-ready code:** a real signed-release Gradle config (reads an un-committed
+  `keystore.properties`, falls back to an unsigned build if it's absent, never fails),
+  ProGuard/R8 rules for every library in use, versioning from `gradle.properties`. `./gradlew
+  lint` goes from 8 real errors to 0 (several were genuine crash risks on this app's
+  minSdk 26 — an API 27 call, an API 29 call, and a `registerReceiver` overload that only exists
+  on API 33+ — not just style nags). OSRM/Nominatim/Photon URLs moved to `BuildConfig` (so a
+  self-hosted or paid provider is a config change, not a code change), with a shared User-Agent
+  and exponential backoff on rate-limiting. Prominent in-app disclosure screens appear before any
+  system location-permission dialog. A new About screen, a Privacy screen, a committed
+  `PRIVACY.md`, and a `store/` folder (listing copy, a Data Safety form draft, permission
+  declaration justifications, a release checklist including the current Play Console closed-
+  testing requirement and the public-server fair-use risk, and a screenshots list) prepare the
+  Play Store submission materials. `scripts/verify_release.sh` runs the whole checklist
+  (lint, tests, a release compile/R8 check, a forbidden-permissions scan) and prints PASS/FAIL.
+  No release APK or AAB is ever committed or left behind by any of this.

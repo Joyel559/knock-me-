@@ -38,6 +38,13 @@ be told before I reach my place so I can get ready and get out in time.
 - **Wrong-route alarm** — rings if your ride goes more than 500 m off the planned route (Cab
   mode), so you know a detour happened without staring at the map.
 
+Once you arrive, Knock Me stops tracking on its own — it stops location updates the instant
+arrival is confirmed (either the usual 2-reading radius check, or just sitting within 150 m of
+the destination for a full minute, which catches a stop that's slightly outside the radius you
+picked), and fully cleans everything up (notification, foreground service, geofence, the
+background watchdog) once you dismiss the alarm. A trip also ends on its own after a safety-cap
+duration (default 36 hours, editable in Settings) so nothing can track forever by mistake.
+
 ## Features
 
 - Current location and destination fields, with search, pin-on-map, and paste support.
@@ -152,3 +159,19 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 ```
 
 APK output: `app/build/outputs/apk/debug/app-debug.apk`
+
+## Release
+
+The project is set up so a signed release build works without any code changes once you provide
+a keystore:
+
+1. Copy `keystore.properties.example` to `keystore.properties` (project root) and fill it in.
+   This file is git-ignored — never commit it.
+2. Set `APP_VERSION_CODE`/`APP_VERSION_NAME` in `gradle.properties`.
+3. `./gradlew bundleRelease` (produces `app/build/outputs/bundle/release/app-release.aab`).
+
+See `store/release-checklist.md` for the full walkthrough (keystore creation, Play Console
+testing tracks, the third-party-server scaling risk and options), `store/data-safety.md` and
+`store/permissions-justification.md` for drafted Play Console form answers, and `PRIVACY.md` for
+the full privacy policy. `./scripts/verify_release.sh` runs lint, unit tests, a release
+compile/R8 check, and a forbidden-permissions scan, and prints PASS/FAIL.
