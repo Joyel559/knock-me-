@@ -280,13 +280,44 @@ class TripService : Service() {
 
     private fun beginTracking() {
         trackingJob = scope.launch {
-            val trip = repository.getActiveTrip()
-            if (trip == null || trip.state == TripState.FINISHED) {
-                stopSelf()
-                return@launch
+            try {
+                val trip = repository.getActiveTrip()
+                if (trip == null || trip.state == TripState.FINISHED) {
+                    stopSelf()
+                    return@launch
+                }
+                runTrip(trip)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e // normal job cancellation (e.g. stopTracking()) — never treat as a failure
+            } catch (e: SecurityException) {
+                // The user revoked location permission while a trip was running.
+                handleTrackingLost()
+            } catch (e: Exception) {
+                // Last-resort safety net: an unexpected error here must never crash the whole
+                // app/process — clean up and let the user know tracking stopped, same as any
+                // other ending path, rather than silently dying mid-trip.
+                handleTrackingLost()
             }
-            runTrip(trip)
         }
+    }
+
+    /** Calm cleanup + notification for a trip interrupted by something outside normal flow
+     * (permission revoked, GPS turned off and never recovered, or any other unexpected error). */
+    private suspend fun handleTrackingLost() {
+        val notification = NotificationCompat.Builder(this, CHANNEL_SERVICE)
+            .setSmallIcon(com.joyel.tripguard.R.drawable.ic_notification)
+            .setContentTitle("Knock Me stopped tracking")
+            .setContentText("Location access was lost. Open the app to check your trip.")
+            .setAutoCancel(true)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    this, 0, Intent(this, MainActivity::class.java),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+            )
+            .build()
+        notifySafely(RESUME_NOTIFICATION_ID, notification)
+        finishTrip(TripOutcome.GPS_LOST)
     }
 
     private suspend fun runTrip(trip: Trip) {
