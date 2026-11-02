@@ -55,10 +55,10 @@ class AlarmActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setShowWhenLocked(true)
         setTurnScreenOn(true)
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-        )
+        // Shows the alarm over the lock screen without dismissing it (setShowWhenLocked is the
+        // modern replacement for the deprecated FLAG_DISMISS_KEYGUARD, and doesn't bypass the
+        // device's own lock on its way back out — the user still has to unlock normally).
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         registerReceiver(
             dismissReceiver,

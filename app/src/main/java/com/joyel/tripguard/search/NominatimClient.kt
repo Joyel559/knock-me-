@@ -1,6 +1,8 @@
 package com.joyel.tripguard.search
 
 import com.joyel.tripguard.geo.LatLon
+import com.joyel.tripguard.net.KNOCKME_USER_AGENT
+import com.joyel.tripguard.net.executeWithBackoff
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -18,7 +20,7 @@ private data class NominatimAddress(val country_code: String? = null)
 @Serializable
 private data class NominatimReverseResult(val display_name: String, val address: NominatimAddress? = null)
 
-const val USER_AGENT = "KnockMe/1.0 (personal use, not for distribution)"
+private val BASE_URL get() = com.joyel.tripguard.BuildConfig.NOMINATIM_BASE_URL
 
 /** Nominatim search + reverse geocode, max 1 request/second total across both (PRD 4). */
 class NominatimClient(private val client: OkHttpClient = OkHttpClient()) {
@@ -32,16 +34,19 @@ class NominatimClient(private val client: OkHttpClient = OkHttpClient()) {
         lastRequestAtMs = System.currentTimeMillis()
     }
 
-    private suspend fun rawSearch(url: String): List<PlaceResult> = withContext(Dispatchers.IO) {
+    private suspend fun fetch(url: String): String? = withContext(Dispatchers.IO) {
         throttle()
-        val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
-        val body = runCatching {
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) null else response.body?.string()
-            }
-        }.getOrNull() ?: return@withContext emptyList()
-
+        val request = Request.Builder().url(url).header("User-Agent", KNOCKME_USER_AGENT).build()
         runCatching {
+            executeWithBackoff(client, request)?.use { response ->
+                if (!response.isSuccessful) null else response.body.string()
+            }
+        }.getOrNull()
+    }
+
+    private suspend fun rawSearch(url: String): List<PlaceResult> {
+        val body = fetch(url) ?: return emptyList()
+        return runCatching {
             json.decodeFromString<List<NominatimResult>>(body).map {
                 PlaceResult(it.display_name, LatLon(it.lat.toDouble(), it.lon.toDouble()))
             }
@@ -57,47 +62,29 @@ class NominatimClient(private val client: OkHttpClient = OkHttpClient()) {
         if (query.isBlank()) return emptyList()
         val encoded = URLEncoder.encode(query, "UTF-8")
         val cc = countryCode?.let { "&countrycodes=$it" }.orEmpty()
-        val first = rawSearch("https://nominatim.openstreetmap.org/search?q=$encoded&format=json&limit=8$cc")
+        val first = rawSearch("$BASE_URL/search?q=$encoded&format=json&limit=8$cc")
         if (first.isNotEmpty() || near == null) return first
 
         // ~100km box: 1 degree latitude ~111km, longitude scaled by cos(lat).
         val dLat = 100.0 / 111.0
         val dLon = dLat / kotlin.math.max(0.1, kotlin.math.cos(Math.toRadians(near.lat)))
         val viewbox = "${near.lon - dLon},${near.lat + dLat},${near.lon + dLon},${near.lat - dLat}"
-        return rawSearch(
-            "https://nominatim.openstreetmap.org/search?q=$encoded&format=json&limit=8&viewbox=$viewbox&bounded=0"
-        )
+        return rawSearch("$BASE_URL/search?q=$encoded&format=json&limit=8&viewbox=$viewbox&bounded=0")
     }
 
     /** Reverse-geocodes a fix to a readable label. Returns null (never throws) on any failure. */
-    suspend fun reverseGeocode(lat: Double, lon: Double): String? = withContext(Dispatchers.IO) {
+    suspend fun reverseGeocode(lat: Double, lon: Double): String? {
         val key = "%.4f,%.4f".format(lat, lon)
-        reverseCache[key]?.let { return@withContext it }
-        throttle()
-        val url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon"
-        val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
-
-        val body = runCatching {
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) null else response.body?.string()
-            }
-        }.getOrNull() ?: return@withContext null
-
-        runCatching { json.decodeFromString<NominatimReverseResult>(body).display_name }
+        reverseCache[key]?.let { return it }
+        val body = fetch("$BASE_URL/reverse?format=json&lat=$lat&lon=$lon") ?: return null
+        return runCatching { json.decodeFromString<NominatimReverseResult>(body).display_name }
             .getOrNull()
             ?.also { reverseCache[key] = it }
     }
 
     /** Country code (ISO 3166-1 alpha-2, lowercase) for a fix, used to bias search. Null on failure. */
-    suspend fun reverseCountryCode(lat: Double, lon: Double): String? = withContext(Dispatchers.IO) {
-        throttle()
-        val url = "https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&lat=$lat&lon=$lon"
-        val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
-        val body = runCatching {
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) null else response.body?.string()
-            }
-        }.getOrNull() ?: return@withContext null
-        runCatching { json.decodeFromString<NominatimReverseResult>(body).address?.country_code }.getOrNull()
+    suspend fun reverseCountryCode(lat: Double, lon: Double): String? {
+        val body = fetch("$BASE_URL/reverse?format=json&addressdetails=1&lat=$lat&lon=$lon") ?: return null
+        return runCatching { json.decodeFromString<NominatimReverseResult>(body).address?.country_code }.getOrNull()
     }
 }

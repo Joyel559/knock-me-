@@ -1,6 +1,8 @@
 package com.joyel.tripguard.search
 
 import com.joyel.tripguard.geo.LatLon
+import com.joyel.tripguard.net.KNOCKME_USER_AGENT
+import com.joyel.tripguard.net.executeWithBackoff
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -8,6 +10,8 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.URLEncoder
+
+private val BASE_URL get() = com.joyel.tripguard.BuildConfig.PHOTON_BASE_URL
 
 @Serializable
 private data class PhotonProperties(
@@ -41,11 +45,11 @@ class PhotonClient(private val client: OkHttpClient = OkHttpClient()) {
             if (query.isBlank()) return@withContext emptyList()
             val encoded = URLEncoder.encode(query, "UTF-8")
             val bias = near?.let { "&lat=${it.lat}&lon=${it.lon}" }.orEmpty()
-            val url = "https://photon.komoot.io/api/?q=$encoded&limit=$limit&lang=en$bias"
-            val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
+            val url = "$BASE_URL/api/?q=$encoded&limit=$limit&lang=en$bias"
+            val request = Request.Builder().url(url).header("User-Agent", KNOCKME_USER_AGENT).build()
 
             val body = runCatching {
-                client.newCall(request).execute().use { r -> if (r.isSuccessful) r.body?.string() else null }
+                executeWithBackoff(client, request)?.use { r -> if (r.isSuccessful) r.body.string() else null }
             }.getOrNull() ?: return@withContext emptyList()
 
             runCatching {
@@ -54,10 +58,10 @@ class PhotonClient(private val client: OkHttpClient = OkHttpClient()) {
         }
 
     suspend fun reverse(lat: Double, lon: Double): String? = withContext(Dispatchers.IO) {
-        val url = "https://photon.komoot.io/reverse?lat=$lat&lon=$lon"
-        val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
+        val url = "$BASE_URL/reverse?lat=$lat&lon=$lon"
+        val request = Request.Builder().url(url).header("User-Agent", KNOCKME_USER_AGENT).build()
         val body = runCatching {
-            client.newCall(request).execute().use { r -> if (r.isSuccessful) r.body?.string() else null }
+            executeWithBackoff(client, request)?.use { r -> if (r.isSuccessful) r.body.string() else null }
         }.getOrNull() ?: return@withContext null
         runCatching {
             json.decodeFromString<PhotonReverseResponse>(body).features.firstOrNull()?.toPlaceResult()?.label

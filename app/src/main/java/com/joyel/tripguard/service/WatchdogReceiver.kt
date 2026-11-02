@@ -28,13 +28,13 @@ class WatchdogReceiver : BroadcastReceiver() {
             try {
                 val tripRepo = TripRepository(appContext)
                 val trip = tripRepo.getActiveTrip()
-                val tripActive = trip != null && trip.state != TripState.FINISHED
-                if (!tripActive) return@launch // trip stopped/finished: chain ends, don't reschedule
-
+                if (trip == null || trip.state == TripState.FINISHED) {
+                    return@launch // trip stopped/finished: chain ends, don't reschedule
+                }
                 // Safety cap backstop: if the service already died, its own per-fix TripEngine
                 // check can't fire, so the watchdog is what actually ends an over-long trip.
                 val maxHours = com.joyel.tripguard.trip.SettingsRepository(appContext).get().maxTripHours
-                if (System.currentTimeMillis() - trip!!.startedAt >= maxHours * 60L * 60 * 1000) {
+                if (System.currentTimeMillis() - trip.startedAt >= maxHours * 60L * 60 * 1000) {
                     finishTimedOutTrip(appContext, maxHours)
                     return@launch
                 }
@@ -44,7 +44,7 @@ class WatchdogReceiver : BroadcastReceiver() {
                 val lastHeartbeat = heartbeatRepo.getLastHeartbeatElapsedMs()
                 val lastRung = heartbeatRepo.getLastRingElapsedMs()
 
-                if (WatchdogLogic.shouldRing(now, lastHeartbeat, tripActive, lastRung)) {
+                if (WatchdogLogic.shouldRing(now, lastHeartbeat, tripActive = true, lastRung)) {
                     heartbeatRepo.recordRing(now)
                     markUnfinishedTripsInterrupted(appContext)
                     AlarmController.raiseLoudAlarm(

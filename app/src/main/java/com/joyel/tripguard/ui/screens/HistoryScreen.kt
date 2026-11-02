@@ -9,7 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -71,7 +71,7 @@ fun HistoryScreen(navController: NavController) {
                         Text(formatWhen(trip.startedAt))
                         Text("${if (trip.mode == Mode.CAB) "Cab" else "Bus/Train"} · ${trip.outcome?.name?.lowercase() ?: "in progress"} · ${alarmCounts[trip.id] ?: 0} wrong-route alarms")
                     }
-                    Divider()
+                    HorizontalDivider()
                 }
             }
         }

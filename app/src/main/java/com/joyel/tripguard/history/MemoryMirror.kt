@@ -74,6 +74,7 @@ data class RouteAlarmEventExport(
 
 object MemoryMirror {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val prettyJson = Json { prettyPrint = true }
     private val mutex = Mutex()
     private var lastWriteAttempt = 0L
 
@@ -154,7 +155,7 @@ object MemoryMirror {
             trips = tripExports
         )
 
-        val jsonString = Json { prettyPrint = true }.encodeToString(memory)
+        val jsonString = prettyJson.encodeToString(memory)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val resolver = context.contentResolver
@@ -173,9 +174,10 @@ object MemoryMirror {
                     existingUri = ContentUris.withAppendedId(collection, id)
                 }
             }
+            val foundUri = existingUri
 
-            val uri = if (existingUri != null) {
-                existingUri!!
+            val uri = if (foundUri != null) {
+                foundUri
             } else {
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)

@@ -1,9 +1,26 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
 }
+
+fun gradleProp(name: String, default: String = ""): String =
+    (project.findProperty(name) as String?) ?: default
+
+// keystore.properties is never committed (see .gitignore) — if it's missing, the release build
+// just falls back to unsigned instead of failing, so `./gradlew assembleRelease` still works for
+// local compile/R8 checks without a real signing key.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+fun keystoreProp(name: String): String? =
+    (keystoreProperties.getProperty(name)) ?: System.getenv(name)
 
 android {
     namespace = "com.joyel.tripguard"
@@ -13,15 +30,35 @@ android {
         applicationId = "com.joyel.tripguard"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = gradleProp("APP_VERSION_CODE", "1").toInt()
+        versionName = gradleProp("APP_VERSION_NAME", "1.0.0")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "OSRM_BASE_URL", "\"${gradleProp("OSRM_BASE_URL", "https://router.project-osrm.org")}\"")
+        buildConfigField("String", "NOMINATIM_BASE_URL", "\"${gradleProp("NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org")}\"")
+        buildConfigField("String", "PHOTON_BASE_URL", "\"${gradleProp("PHOTON_BASE_URL", "https://photon.komoot.io")}\"")
+        buildConfigField("String", "CONTACT_EMAIL", "\"${gradleProp("KNOCKME_CONTACT_EMAIL", "contact@example.com")}\"")
+    }
+
+    signingConfigs {
+        val storeFilePath = keystoreProp("storeFile")
+        if (storeFilePath != null) {
+            create("release") {
+                storeFile = rootProject.file(storeFilePath)
+                storePassword = keystoreProp("storePassword")
+                keyAlias = keystoreProp("keyAlias")
+                keyPassword = keystoreProp("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
         debug {
             isDebuggable = true
@@ -36,6 +73,12 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    bundle {
+        language { enableSplit = true }
+        density { enableSplit = true }
+        abi { enableSplit = true }
     }
 }
 

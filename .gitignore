@@ -10,3 +10,9 @@ captures/
 .DS_Store
 *.apk
 !knockme.apk
+*.aab
+
+# Release signing — never commit a real keystore or its passwords.
+keystore.properties
+*.jks
+*.keystore

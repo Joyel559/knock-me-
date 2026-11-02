@@ -44,7 +44,7 @@ class LocationClient(context: Context) {
     suspend fun lastKnownLocation(): Location? =
         kotlinx.coroutines.suspendCancellableCoroutine { cont ->
             fused.lastLocation
-                .addOnSuccessListener { cont.resume(it) {} }
-                .addOnFailureListener { cont.resume(null) {} }
+                .addOnSuccessListener { cont.resume(it) { _, _, _ -> } }
+                .addOnFailureListener { cont.resume(null) { _, _, _ -> } }
         }
 }
