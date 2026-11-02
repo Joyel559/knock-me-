@@ -1,8 +1,13 @@
 package com.joyel.tripguard.ui.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.joyel.tripguard.geo.LatLon
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -25,6 +30,21 @@ fun TripMap(
     currentLocationAccuracyMeters: Double? = null,
     onLongPress: ((LatLon) -> Unit)? = null
 ) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val mapViewHolder = remember { arrayOfNulls<MapView>(1) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            val mv = mapViewHolder[0] ?: return@LifecycleEventObserver
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mv.onResume()
+                Lifecycle.Event.ON_PAUSE -> mv.onPause()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -32,7 +52,15 @@ fun TripMap(
                 setTileSource(TileSourceFactory.MAPNIK)
                 setMultiTouchControls(true)
                 controller.setZoom(13.0)
+                mapViewHolder[0] = this
             }
+        },
+        onRelease = { mapView ->
+            // osmdroid leaks tile-loading threads/bitmaps if a MapView isn't detached when its
+            // Compose node leaves the tree (e.g. navigating away from a screen with a map).
+            mapView.onPause()
+            mapView.onDetach()
+            mapViewHolder[0] = null
         },
         update = { mapView ->
             mapView.overlays.clear()

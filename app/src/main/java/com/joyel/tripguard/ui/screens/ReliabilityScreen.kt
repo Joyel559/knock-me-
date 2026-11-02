@@ -112,6 +112,19 @@ fun ReliabilityScreen(navController: NavController) {
         ActivityResultContracts.RequestPermission()
     ) { refreshKey++ }
 
+    val onboardingRepo = remember { com.joyel.tripguard.ui.onboarding.OnboardingRepository(context) }
+    var showBackgroundDisclosure by remember { mutableStateOf(false) }
+
+    fun requestBackgroundLocationWithDisclosure() {
+        scope.launch {
+            if (onboardingRepo.isBackgroundDisclosureSeen()) {
+                if (Build.VERSION.SDK_INT >= 29) requestBackground.launch(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            } else {
+                showBackgroundDisclosure = true
+            }
+        }
+    }
+
     fun openAppSettings() {
         runCatching {
             context.startActivity(
@@ -183,11 +196,7 @@ fun ReliabilityScreen(navController: NavController) {
                             Button(
                                 modifier = Modifier.padding(top = 8.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White),
-                                onClick = {
-                                    if (Build.VERSION.SDK_INT >= 29) {
-                                        requestBackground.launch(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                                    }
-                                }
+                                onClick = { requestBackgroundLocationWithDisclosure() }
                             ) { Text("Allow", color = Color.White) }
                         }
                     }
@@ -258,5 +267,34 @@ fun ReliabilityScreen(navController: NavController) {
                 )
             }
         }
+    }
+
+    if (showBackgroundDisclosure) {
+        AlertDialog(
+            onDismissRequest = { showBackgroundDisclosure = false },
+            containerColor = Color.Black,
+            title = { Text("Location, all the time", color = Color.White) },
+            text = {
+                Text(
+                    "This lets Knock Me keep tracking in the background even if the system " +
+                        "would otherwise pause it, and lets the geofence backup catch your " +
+                        "arrival. It's still only used to run your trip — it stays on your " +
+                        "phone, same as always.",
+                    color = Color.LightGray
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showBackgroundDisclosure = false
+                    scope.launch { onboardingRepo.setBackgroundDisclosureSeen() }
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        requestBackground.launch(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                    }
+                }) { Text("Continue", color = Color.White) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBackgroundDisclosure = false }) { Text("Not now", color = Color.White) }
+            }
+        )
     }
 }

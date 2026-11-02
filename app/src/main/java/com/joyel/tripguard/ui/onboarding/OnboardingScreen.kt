@@ -46,7 +46,22 @@ fun OnboardingScreen(onFinished: () -> Unit) {
 
     var refreshKey by remember { mutableIntStateOf(0) }
     var skipped by remember { mutableStateOf<Set<String>>(emptySet()) }
-    LaunchedEffect(Unit) { skipped = repo.skippedSteps() }
+    var disclosureSeen by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(Unit) {
+        skipped = repo.skippedSteps()
+        disclosureSeen = repo.isDisclosureSeen()
+    }
+
+    // Prominent disclosure (Play policy): shown once, as its own screen, before any system
+    // location-permission dialog — not combined with the Allow button that triggers it.
+    if (disclosureSeen == false) {
+        LocationDisclosureScreen(onContinue = {
+            scope.launch { repo.setDisclosureSeen() }
+            disclosureSeen = true
+        })
+        return
+    }
+    if (disclosureSeen == null) return // loading
 
     val checklist = remember(refreshKey) { buildPermissionChecklist(context) }
     val grantedIds = checklist.filter { it.granted }.map { it.id }.toSet()
@@ -68,7 +83,6 @@ fun OnboardingScreen(onFinished: () -> Unit) {
         return
     }
     val step = pending.first()
-    val isFirstStep = step == ALL_STEPS.first()
 
     val requestPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -96,15 +110,6 @@ fun OnboardingScreen(onFinished: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            if (isFirstStep) {
-                Text(
-                    "Your location stays on your phone. No account, no tracking, no ads.",
-                    color = androidx.compose.ui.graphics.Color.LightGray,
-                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(bottom = 24.dp)
-                )
-            }
             Text(step.title, color = androidx.compose.ui.graphics.Color.White, textAlign = TextAlign.Center)
             Text(
                 step.sentence,
@@ -123,6 +128,49 @@ fun OnboardingScreen(onFinished: () -> Unit) {
             TextButton(
                 modifier = Modifier.padding(top = 8.dp),
                 onClick = { scope.launch { repo.skip(step.id.name); skipped = repo.skippedSteps() } }
+            ) { Text("Not now", color = androidx.compose.ui.graphics.Color.White) }
+        }
+    }
+}
+
+/** Shown once, before the very first system permission dialog of any kind — a plain-language
+ * statement of what location data Knock Me uses and why, and that it never leaves the phone. */
+@Composable
+private fun LocationDisclosureScreen(onContinue: () -> Unit) {
+    Scaffold(containerColor = androidx.compose.ui.graphics.Color.Black) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                "Before you continue",
+                color = androidx.compose.ui.graphics.Color.White,
+                style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                "Knock Me uses your location to know when you're close to your destination and " +
+                    "to ring an alarm. It's only used while you have a trip running.\n\n" +
+                    "Your location stays on your phone. There's no account, no tracking, and no ads. " +
+                    "If you search for a place or ask for a route, only the text you typed or your " +
+                    "coordinates are sent to the map services that answer that one request — " +
+                    "nothing else about you is sent anywhere.",
+                color = androidx.compose.ui.graphics.Color.LightGray,
+                modifier = Modifier.padding(top = 16.dp),
+                textAlign = TextAlign.Center
+            )
+            Button(
+                modifier = Modifier.padding(top = 24.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = androidx.compose.ui.graphics.Color.Black,
+                    contentColor = androidx.compose.ui.graphics.Color.White
+                ),
+                onClick = onContinue
+            ) { Text("Continue", color = androidx.compose.ui.graphics.Color.White) }
+            TextButton(
+                modifier = Modifier.padding(top = 8.dp),
+                onClick = onContinue
             ) { Text("Not now", color = androidx.compose.ui.graphics.Color.White) }
         }
     }

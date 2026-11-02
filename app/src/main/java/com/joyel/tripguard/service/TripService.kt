@@ -86,9 +86,11 @@ class TripService : Service() {
         heartbeatRepo = HeartbeatRepository(applicationContext)
         locationClient = LocationClient(applicationContext)
         geofencingClient = LocationServices.getGeofencingClient(applicationContext)
-        registerReceiver(
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
             gpsStateReceiver,
-            android.content.IntentFilter(android.location.LocationManager.PROVIDERS_CHANGED_ACTION)
+            android.content.IntentFilter(android.location.LocationManager.PROVIDERS_CHANGED_ACTION),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
         )
     }
 
