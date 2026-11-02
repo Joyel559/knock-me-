@@ -3,6 +3,7 @@ package com.joyel.tripguard.service
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
+import com.joyel.tripguard.notify.notifySafely
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -86,7 +87,7 @@ object AlarmController {
         }
 
         val notification = builder.build()
-        NotificationManagerCompat.from(context).notify(ALARM_NOTIFICATION_ID, notification)
+        context.notifySafely(ALARM_NOTIFICATION_ID, notification)
 
         player?.stop() // never orphan a previous ringing player
         player = AlarmPlayer(context).also {
@@ -98,7 +99,7 @@ object AlarmController {
         player?.stop()
         player = null
         NotificationManagerCompat.from(context).cancel(ALARM_NOTIFICATION_ID)
-        context.sendBroadcast(Intent("com.joyel.tripguard.ACTION_DISMISS_ALARM"))
+        context.sendBroadcast(Intent("com.joyel.tripguard.ACTION_DISMISS_ALARM").setPackage(context.packageName))
     }
 
     /** Short, single, non-looping heads-up alert (GPS off, no fix, low battery). */
@@ -111,6 +112,6 @@ object AlarmController {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
             .build()
-        NotificationManagerCompat.from(context).notify(SHORT_ALERT_NOTIFICATION_ID, notification)
+        context.notifySafely(SHORT_ALERT_NOTIFICATION_ID, notification)
     }
 }

@@ -34,29 +34,29 @@ fun PrivacyScreen(navController: NavController) {
                 modifier = Modifier.padding(top = 16.dp)
             )
 
-            section("Location") {
+            Section("Location") {
                 "Your location is used only on your phone, only while a trip is running, to " +
                     "check your distance to the destination and your position on the planned " +
                     "route. It is never sent anywhere, never stored on a server, and never " +
                     "shared with anyone."
             }
-            section("What's stored on your phone") {
+            Section("What's stored on your phone") {
                 "Trip history, saved places, and settings are stored in a local database on " +
                     "your device, plus a readable backup file in Documents/Knock Me Memory/. " +
                     "None of it leaves your phone unless you choose to export or share it yourself."
             }
-            section("Network requests") {
+            Section("Network requests") {
                 "Searching for a place, pasting a link, or asking for a route sends only the " +
                     "text you typed or the coordinates involved to the keyless public map " +
                     "services that answer that one request (OpenStreetMap's Nominatim and " +
                     "Photon for search, OSRM for routing). No account identifier, device ID, or " +
                     "advertising ID is attached to those requests."
             }
-            section("Deleting your data") {
+            Section("Deleting your data") {
                 "Settings → Clear all history removes everything Knock Me has stored, including " +
                     "the backup file. Uninstalling the app removes everything else."
             }
-            section("Contact") {
+            Section("Contact") {
                 com.joyel.tripguard.BuildConfig.CONTACT_EMAIL
             }
 
@@ -66,7 +66,7 @@ fun PrivacyScreen(navController: NavController) {
 }
 
 @Composable
-private fun section(title: String, body: () -> String) {
+private fun Section(title: String, body: () -> String) {
     Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 20.dp))
     Text(body(), color = Color.LightGray, modifier = Modifier.padding(top = 4.dp))
 }

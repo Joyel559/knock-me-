@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -53,17 +54,26 @@ class AlarmActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setShowWhenLocked(true)
-        setTurnScreenOn(true)
-        // Shows the alarm over the lock screen without dismissing it (setShowWhenLocked is the
-        // modern replacement for the deprecated FLAG_DISMISS_KEYGUARD, and doesn't bypass the
-        // device's own lock on its way back out — the user still has to unlock normally).
+        if (Build.VERSION.SDK_INT >= 27) {
+            // Shows the alarm over the lock screen without dismissing it (the modern
+            // replacement for the deprecated FLAG_SHOW_WHEN_LOCKED/FLAG_DISMISS_KEYGUARD flags,
+            // and doesn't bypass the device's own lock on its way back out).
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        registerReceiver(
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
             dismissReceiver,
             IntentFilter("com.joyel.tripguard.ACTION_DISMISS_ALARM"),
-            RECEIVER_NOT_EXPORTED
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
         )
 
         val kind = AlarmKind.valueOf(intent.getStringExtra(EXTRA_KIND) ?: AlarmKind.ARRIVAL.name)

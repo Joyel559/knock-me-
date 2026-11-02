@@ -203,19 +203,21 @@ fun SettingsScreen(navController: NavController) {
                 }) {
                     Text("Import from file", color = Color.White)
                 }
-                OutlinedButton(onClick = {
-                    runCatching {
-                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                            setDataAndType(
-                                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                                android.provider.DocumentsContract.Document.MIME_TYPE_DIR
-                            )
-                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    OutlinedButton(onClick = {
+                        runCatching {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                setDataAndType(
+                                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                                    android.provider.DocumentsContract.Document.MIME_TYPE_DIR
+                                )
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
                         }
-                        context.startActivity(intent)
+                    }) {
+                        Text("Open folder", color = Color.White)
                     }
-                }) {
-                    Text("Open folder", color = Color.White)
                 }
             }
 

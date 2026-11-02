@@ -78,10 +78,10 @@ fun TripSetupScreen(navController: NavController) {
     var searching by remember { mutableStateOf(false) }
     var searchFailed by remember { mutableStateOf(false) }
 
-    var radiusMeters by remember { mutableStateOf(3000) }
+    var radiusMeters by remember { mutableIntStateOf(3000) }
     var mode by remember { mutableStateOf(Mode.CAB) }
     var finalAlarmEnabled by remember { mutableStateOf(false) }
-    var finalAlarmMeters by remember { mutableStateOf(com.joyel.tripguard.trip.DEFAULT_FINAL_ALARM_RADIUS_M) }
+    var finalAlarmMeters by remember { mutableIntStateOf(com.joyel.tripguard.trip.DEFAULT_FINAL_ALARM_RADIUS_M) }
     var showCustomFinalDialog by remember { mutableStateOf(false) }
     var pendingConfirmation by remember { mutableStateOf<ParsedDestination?>(null) }
     var pasteBusy by remember { mutableStateOf(false) }

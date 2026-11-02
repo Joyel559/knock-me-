@@ -19,6 +19,9 @@ object WatchdogScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         )
 
+    // setAlarmClock is explicitly exempt from SCHEDULE_EXACT_ALARM — it's meant for exactly
+    // this kind of user-visible, time-sensitive alarm, and needs no extra permission or exemption.
+    @android.annotation.SuppressLint("MissingPermission")
     fun scheduleNext(context: Context) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val triggerAt = System.currentTimeMillis() + WatchdogLogic.CHECK_INTERVAL_MS

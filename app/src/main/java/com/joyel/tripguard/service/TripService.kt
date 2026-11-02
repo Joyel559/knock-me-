@@ -18,6 +18,7 @@ import com.joyel.tripguard.history.MemoryMirror
 import com.joyel.tripguard.history.RouteAlarmAction
 import com.joyel.tripguard.history.TripHistoryLogic
 import com.joyel.tripguard.history.TripOutcome
+import com.joyel.tripguard.notify.notifySafely
 import com.joyel.tripguard.location.IntervalSpec
 import com.joyel.tripguard.location.LocationClient
 import com.joyel.tripguard.location.intervalFor
@@ -190,7 +191,7 @@ class TripService : Service() {
             .setContentIntent(contentIntent)
             .setAutoCancel(true)
             .build()
-        androidx.core.app.NotificationManagerCompat.from(this).notify(RESUME_NOTIFICATION_ID, notification)
+        notifySafely(RESUME_NOTIFICATION_ID, notification)
     }
 
     private fun afterDismiss() {
@@ -258,7 +259,7 @@ class TripService : Service() {
                 )
             )
             .build()
-        androidx.core.app.NotificationManagerCompat.from(this).notify(ARRIVED_NOTIFICATION_ID, notification)
+        notifySafely(ARRIVED_NOTIFICATION_ID, notification)
     }
 
     private fun logRouteAlarmEvent(action: RouteAlarmAction) {

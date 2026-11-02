@@ -61,30 +61,20 @@ class AlarmPlayer(private val context: Context) {
     }
 
     private fun requestAudioFocus(audioManager: AudioManager) {
-        if (Build.VERSION.SDK_INT >= 26) {
-            val attrs = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-            val request = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                .setAudioAttributes(attrs)
-                .build()
-            focusRequest = request
-            audioManager.requestAudioFocus(request)
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.requestAudioFocus(null, AudioManager.STREAM_ALARM, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-        }
+        val attrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        val request = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            .setAudioAttributes(attrs)
+            .build()
+        focusRequest = request
+        audioManager.requestAudioFocus(request)
     }
 
     private fun abandonAudioFocus() {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        if (Build.VERSION.SDK_INT >= 26) {
-            focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.abandonAudioFocus(null)
-        }
+        focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         focusRequest = null
     }
 
@@ -96,12 +86,7 @@ class AlarmPlayer(private val context: Context) {
             context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         }
         val pattern = longArrayOf(0, VIBRATE_PATTERN_MS, VIBRATE_PATTERN_MS)
-        if (Build.VERSION.SDK_INT >= 26) {
-            vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0))
-        } else {
-            @Suppress("DEPRECATION")
-            vibrator.vibrate(pattern, 0)
-        }
+        vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0))
     }
 
     private fun stopSoundAndVibration() {
