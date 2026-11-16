@@ -48,6 +48,7 @@ sealed class LocationState {
 private const val FRESH_FIX_MAX_AGE_MS = 2 * 60 * 1000L
 private const val CURRENT_LOCATION_TIMEOUT_MS = 15_000L
 private const val GOOD_ACCURACY_M = 100f
+private const val CONTINUOUS_UPDATE_INTERVAL_MS = 4000L
 
 /**
  * Observable current-location fetcher. Tries last-location + a fresh high-accuracy request in
@@ -100,9 +101,12 @@ class LocationRepository(private val context: Context) {
             val fix = findFix()
             if (fix != null) {
                 _state.value = fix
-                return
+                // Keep emitting fresh fixes (so Home/Trip Setup's "current location" and the map
+                // actually follow the user) until permission/GPS drop, not just the first one.
+                streamContinuousFixes()
             }
-            // findFix() only returns null if permission/GPS dropped mid-search; loop re-checks.
+            // findFix() returns null, or streamContinuousFixes() returns, only if permission/GPS
+            // dropped mid-stream; loop back around to show the right state and retry.
         }
     }
 
@@ -127,6 +131,39 @@ class LocationRepository(private val context: Context) {
 
         return requestUpdatesUntilGoodFix()
     }
+
+    /** Keeps emitting new fixes into [_state] (so the map/current-location UI stays live) until
+     * permission or GPS gets turned off, or the surrounding [job] is cancelled. Play services only
+     * — the platform fallback already loops its own listener inside [platformFix]. */
+    @SuppressLint("MissingPermission")
+    private suspend fun streamContinuousFixes() {
+        if (!playServicesOk) return
+        val request = LocationRequest.Builder(CONTINUOUS_UPDATE_INTERVAL_MS)
+            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+            .setMinUpdateIntervalMillis(CONTINUOUS_UPDATE_INTERVAL_MS / 2)
+            .setWaitForAccurateLocation(false)
+            .build()
+        try {
+            callbackFlow {
+                val callback = object : com.google.android.gms.location.LocationCallback() {
+                    override fun onLocationResult(result: com.google.android.gms.location.LocationResult) {
+                        result.lastLocation?.let { trySend(it) }
+                    }
+                }
+                fused.requestLocationUpdates(request, callback, Looper.getMainLooper())
+                awaitClose { fused.removeLocationUpdates(callback) }
+            }.collect { loc ->
+                if (!hasPermission() || !isGpsEnabled(context)) {
+                    throw PermissionOrGpsLostException()
+                }
+                _state.value = loc.toReady()
+            }
+        } catch (e: PermissionOrGpsLostException) {
+            // fall through: outer loop re-checks and shows the right state
+        }
+    }
+
+    private class PermissionOrGpsLostException : Exception()
 
     @SuppressLint("MissingPermission")
     private suspend fun awaitLast(): Location? = suspendCancellableCoroutine { cont ->

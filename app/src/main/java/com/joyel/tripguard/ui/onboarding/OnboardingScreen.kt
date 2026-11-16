@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.joyel.tripguard.ui.permissions.PermCheckId
 import com.joyel.tripguard.ui.permissions.buildPermissionChecklist
+import com.joyel.tripguard.ui.permissions.findActivity
 import kotlinx.coroutines.launch
 
 private data class Step(val id: PermCheckId, val title: String, val sentence: String)
@@ -45,10 +46,14 @@ fun OnboardingScreen(onFinished: () -> Unit) {
     val repo = remember { OnboardingRepository(context) }
 
     var refreshKey by remember { mutableIntStateOf(0) }
-    var skipped by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // "Not now" on a critical step (location/notifications) only dismisses it for this visit —
+    // never persisted, so the next app launch asks again (bug fix: these used to be skipped
+    // forever via OnboardingRepository.skip(), which also falsely marked onboarding complete).
+    var sessionDismissed by remember { mutableStateOf<Set<PermCheckId>>(emptySet()) }
+    var requested by remember { mutableStateOf<Set<String>>(emptySet()) }
     var disclosureSeen by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(Unit) {
-        skipped = repo.skippedSteps()
+        requested = repo.requestedSteps()
         disclosureSeen = repo.isDisclosureSeen()
     }
 
@@ -66,23 +71,40 @@ fun OnboardingScreen(onFinished: () -> Unit) {
     val checklist = remember(refreshKey) { buildPermissionChecklist(context) }
     val grantedIds = checklist.filter { it.granted }.map { it.id }.toSet()
 
-    val pending = remember(refreshKey, skipped) {
+    val pending = remember(refreshKey, sessionDismissed) {
         ALL_STEPS.filter { step ->
             when (step.id) {
                 PermCheckId.NOTIFICATIONS -> Build.VERSION.SDK_INT >= 33
                 else -> true
-            } && step.id !in grantedIds && step.id.name !in skipped
+            } && step.id !in grantedIds && step.id !in sessionDismissed
         }
     }
 
     if (pending.isEmpty()) {
         LaunchedEffect(Unit) {
-            repo.setComplete()
+            // Completion only short-circuits future onboarding visits when every step was
+            // actually granted this time; a merely-dismissed critical permission still missing
+            // is caught again by MainActivity's/HomeScreen's own re-check on the next launch.
+            if (grantedIds.containsAll(ALL_STEPS.map { it.id }.filter {
+                    it != PermCheckId.NOTIFICATIONS || Build.VERSION.SDK_INT >= 33
+                })
+            ) {
+                repo.setComplete()
+            }
             onFinished()
         }
         return
     }
     val step = pending.first()
+    val activity = context.findActivity()
+    val permissionName = when (step.id) {
+        PermCheckId.FINE_LOCATION -> android.Manifest.permission.ACCESS_FINE_LOCATION
+        PermCheckId.NOTIFICATIONS -> android.Manifest.permission.POST_NOTIFICATIONS
+        else -> null
+    }
+    // "Don't ask again": only possible to detect after we've asked at least once before.
+    val permanentlyDenied = permissionName != null && step.id.name in requested && activity != null &&
+        !androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(activity, permissionName)
 
     val requestPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -92,6 +114,7 @@ fun OnboardingScreen(onFinished: () -> Unit) {
     ) { refreshKey++ }
 
     fun allow() {
+        scope.launch { repo.markRequested(step.id.name); requested = repo.requestedSteps() }
         when (step.id) {
             PermCheckId.FINE_LOCATION -> requestMultiple.launch(
                 arrayOf(
@@ -102,6 +125,15 @@ fun OnboardingScreen(onFinished: () -> Unit) {
             PermCheckId.NOTIFICATIONS -> requestPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             else -> {}
         }
+    }
+
+    fun openSettings() {
+        context.startActivity(
+            android.content.Intent(
+                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:${context.packageName}")
+            )
+        )
     }
 
     Scaffold(containerColor = androidx.compose.ui.graphics.Color.Black) { padding ->
@@ -117,17 +149,25 @@ fun OnboardingScreen(onFinished: () -> Unit) {
                 modifier = Modifier.padding(top = 12.dp),
                 textAlign = TextAlign.Center
             )
+            if (permanentlyDenied) {
+                Text(
+                    "You turned this off permanently. Open Settings to turn it back on.",
+                    color = androidx.compose.ui.graphics.Color.Yellow,
+                    modifier = Modifier.padding(top = 8.dp),
+                    textAlign = TextAlign.Center
+                )
+            }
             Button(
                 modifier = Modifier.padding(top = 24.dp),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = androidx.compose.ui.graphics.Color.Black,
                     contentColor = androidx.compose.ui.graphics.Color.White
                 ),
-                onClick = { allow() }
-            ) { Text("Allow", color = androidx.compose.ui.graphics.Color.White) }
+                onClick = { if (permanentlyDenied) openSettings() else allow() }
+            ) { Text(if (permanentlyDenied) "Open settings" else "Allow", color = androidx.compose.ui.graphics.Color.White) }
             TextButton(
                 modifier = Modifier.padding(top = 8.dp),
-                onClick = { scope.launch { repo.skip(step.id.name); skipped = repo.skippedSteps() } }
+                onClick = { sessionDismissed = sessionDismissed + step.id }
             ) { Text("Not now", color = androidx.compose.ui.graphics.Color.White) }
         }
     }

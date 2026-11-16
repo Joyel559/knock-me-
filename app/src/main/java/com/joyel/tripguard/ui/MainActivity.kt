@@ -42,13 +42,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val onboardingDone = runBlocking { OnboardingRepository(this@MainActivity).isComplete() }
+        // Bug fix: location permission must be asked on every launch while it's missing, not
+        // only before onboarding has ever completed once (it may have been revoked since).
+        val locationGranted = com.joyel.tripguard.ui.permissions.hasLocationPermission(this)
+        val needsOnboarding = !onboardingDone || !locationGranted
         val sharedText = extractShareText(intent)
         val startDestination = when {
-            !onboardingDone -> Routes.ONBOARDING
+            needsOnboarding -> Routes.ONBOARDING
             sharedText != null -> Routes.SETUP
             else -> Routes.HOME
         }
-        if (sharedText != null && onboardingDone) {
+        if (sharedText != null && !needsOnboarding) {
             SharedDestinationHolder.resolving = true
             lifecycleScope.launch {
                 val result = ShareIntentParser().parse(sharedText)

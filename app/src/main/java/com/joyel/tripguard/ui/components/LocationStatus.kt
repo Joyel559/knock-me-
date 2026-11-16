@@ -34,10 +34,21 @@ fun LocationStatusSection(state: LocationState, modifier: Modifier = Modifier) {
     ) {}
 
     var placeName by remember { mutableStateOf<String?>(null) }
+    var lastGeocoded by remember { mutableStateOf<LocationState.Ready?>(null) }
     LaunchedEffect(state) {
         if (state is LocationState.Ready) {
-            placeName = null
-            placeName = NominatimClient().reverseGeocode(state.lat, state.lon)
+            // Location now streams continuously; only re-geocode when we've moved meaningfully,
+            // not on every ~4s fix, or every fix would fire a network request.
+            val moved = lastGeocoded?.let {
+                com.joyel.tripguard.geo.haversineMeters(
+                    com.joyel.tripguard.geo.LatLon(it.lat, it.lon),
+                    com.joyel.tripguard.geo.LatLon(state.lat, state.lon)
+                ) > 100.0
+            } ?: true
+            if (moved) {
+                lastGeocoded = state
+                placeName = NominatimClient().reverseGeocode(state.lat, state.lon)
+            }
         }
     }
 

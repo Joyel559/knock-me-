@@ -116,6 +116,7 @@ fun TripSetupScreen(navController: NavController) {
     val locationRepo = remember { LocationRepositoryHolder.get(context) }
     val locationState by locationRepo.state.collectAsState()
     LaunchedEffect(Unit) { locationRepo.start() }
+    DisposableEffect(Unit) { onDispose { locationRepo.stop() } }
 
     val historyRepo = remember { HistoryRepository(context) }
     val savedPlaces by historyRepo.observeSavedPlaces().collectAsState(initial = emptyList())
@@ -458,10 +459,13 @@ fun TripSetupScreen(navController: NavController) {
                             }
                         }) { Text(if (pasteBusy) "Reading…" else "Paste", color = Color.White) }
                         TextButton(onClick = {
-                            currentReadyLatLon?.let {
-                                destination = it
+                            val fix = currentReadyLatLon
+                            if (fix != null) {
+                                destination = fix
                                 destLabel = "Current location"
                                 toQuery = "Current location"
+                            } else {
+                                errorText = "Still finding your location, try again in a moment"
                             }
                         }) { Text("My location", color = Color.White) }
                         TextButton(

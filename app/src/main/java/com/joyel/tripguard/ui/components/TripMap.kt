@@ -64,7 +64,9 @@ fun TripMap(
         },
         update = { mapView ->
             mapView.overlays.clear()
-            mapView.controller.setCenter(GeoPoint(center.lat, center.lon))
+            // animateTo (not setCenter) so a new fix glides the map into place instead of
+            // snapping, matching the "map follows location" expectation.
+            mapView.controller.animateTo(GeoPoint(center.lat, center.lon))
 
             if (onLongPress != null) {
                 val receiver = object : MapEventsReceiver {

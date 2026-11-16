@@ -108,7 +108,9 @@ That's enough for tracking to keep working with the screen locked, the same way 
 navigation does — Android allows a running foreground location service to keep getting fixes
 without the broader "Allow all the time" permission. A third permission, **alarms over the lock
 screen**, is only asked (once, skippable) right before your first trip, and only on Android
-versions that require it.
+versions that require it. If location permission is ever missing or gets revoked, Knock Me asks
+again the next time you open the app (or the moment you come back to it from Settings) — it never
+silently gives up after one "Not now".
 
 If your phone is known to be aggressive about killing background apps, Settings → Reliability
 has an optional **Max reliability** switch. Turning it on asks for two more things:

@@ -28,8 +28,12 @@ import com.joyel.tripguard.trip.TripPrefill
 import com.joyel.tripguard.trip.TripPrefillHolder
 import com.joyel.tripguard.trip.TripRepository
 import com.joyel.tripguard.trip.TripState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.joyel.tripguard.ui.Routes
 import com.joyel.tripguard.ui.components.LocationStatusSection
+import com.joyel.tripguard.ui.permissions.hasLocationPermission
 import kotlinx.coroutines.launch
 
 @Composable
@@ -40,6 +44,23 @@ fun HomeScreen(navController: NavController) {
     val locationRepo = remember { LocationRepositoryHolder.get(context) }
     val locationState by locationRepo.state.collectAsState()
     LaunchedEffect(Unit) { locationRepo.start() }
+    DisposableEffect(Unit) { onDispose { locationRepo.stop() } }
+
+    // Re-check on every resume (not just cold start) so revoking permission in Settings and
+    // switching straight back is caught immediately, per the bug report.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, navController) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && !hasLocationPermission(context)) {
+                navController.navigate(Routes.ONBOARDING)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(Unit) {
+        if (!hasLocationPermission(context)) navController.navigate(Routes.ONBOARDING)
+    }
 
     val historyRepo = remember { HistoryRepository(context) }
     val recentTrips by historyRepo.observeRecentTrips(3).collectAsState(initial = emptyList())
@@ -95,7 +116,13 @@ fun HomeScreen(navController: NavController) {
             Button(
                 modifier = Modifier.padding(top = 24.dp).fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White),
-                onClick = { navController.navigate(Routes.SETUP) }
+                onClick = {
+                    if (hasLocationPermission(context)) {
+                        navController.navigate(Routes.SETUP)
+                    } else {
+                        navController.navigate(Routes.ONBOARDING)
+                    }
+                }
             ) {
                 Text("New Trip", color = Color.White)
             }

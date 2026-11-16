@@ -22,6 +22,17 @@ data class PermCheck(val id: PermCheckId, val label: String, val granted: Boolea
 private fun hasPermission(context: Context, permission: String): Boolean =
     ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
+fun hasLocationPermission(context: Context): Boolean =
+    hasPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) ||
+        hasPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+
+/** Unwraps a Compose [Context] (often a ContextWrapper) down to the hosting Activity, or null. */
+tailrec fun Context.findActivity(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 fun isGpsEnabled(context: Context): Boolean {
     val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     return lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||

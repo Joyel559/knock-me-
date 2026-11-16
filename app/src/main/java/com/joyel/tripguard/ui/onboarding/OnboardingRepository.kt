@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 private val Context.onboardingDataStore by preferencesDataStore(name = "knockme_onboarding")
 private val COMPLETE = booleanPreferencesKey("onboarding_complete")
 private val SKIPPED = stringPreferencesKey("skipped_steps")
+private val REQUESTED = stringPreferencesKey("requested_steps")
 private val DISCLOSURE_SEEN = booleanPreferencesKey("location_disclosure_seen")
 private val BACKGROUND_DISCLOSURE_SEEN = booleanPreferencesKey("background_location_disclosure_seen")
 
@@ -47,4 +48,19 @@ class OnboardingRepository(private val context: Context) {
             prefs[SKIPPED] = current.joinToString(",")
         }
     }
+
+    /** Tracks whether we've ever launched the system prompt for a step, so a later denial can be
+     * told apart from "never asked" — needed to detect "Don't ask again" (permanent denial) and
+     * offer "Open settings" instead of a system prompt that will silently do nothing. */
+    suspend fun markRequested(stepId: String) {
+        context.onboardingDataStore.edit { prefs ->
+            val current = (prefs[REQUESTED] ?: "").split(",").filter { it.isNotBlank() }.toMutableSet()
+            current.add(stepId)
+            prefs[REQUESTED] = current.joinToString(",")
+        }
+    }
+
+    suspend fun requestedSteps(): Set<String> =
+        (context.onboardingDataStore.data.first()[REQUESTED] ?: "")
+            .split(",").filter { it.isNotBlank() }.toSet()
 }
