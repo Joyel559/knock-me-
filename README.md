@@ -14,7 +14,7 @@ No account. No tracking. Everything stays on your phone.
 
 ## Download the APK
 
-Just want to use the app? Click **[knowme.apk](knowme.apk)**, download it, open it on your
+Just want to use the app? Click **[knockme.apk](knockme.apk)**, download it, open it on your
 Android phone, and install it (allow "install from unknown sources" if asked). No Android
 Studio needed. *(Updated with latest code changes.)*
 
