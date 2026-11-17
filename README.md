@@ -14,9 +14,9 @@ No account. No tracking. Everything stays on your phone.
 
 ## Download the APK
 
-Just want to use the app? Click **[knockme.apk](knockme.apk)**, download it, open it on your
+Just want to use the app? Click **[knowme.apk](knowme.apk)**, download it, open it on your
 Android phone, and install it (allow "install from unknown sources" if asked). No Android
-Studio needed. *(Updated to v1.6 — auto-stop at destination, release-ready build.)*
+Studio needed. *(Updated with latest code changes.)*
 
 <p align="center"><img src="assets/screenshots/protect.png" width="260"></p>
 <p align="center">Google Play Protect verified APK</p>
