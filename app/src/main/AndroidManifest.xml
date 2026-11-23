@@ -51,7 +51,18 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="maps.google.com" />
                 <data android:scheme="https" android:host="www.google.com" android:pathPrefix="/maps" />
+                <data android:scheme="https" android:host="google.com" android:pathPrefix="/maps" />
                 <data android:scheme="https" android:host="maps.app.goo.gl" />
+                <data android:scheme="https" android:host="goo.gl" android:pathPrefix="/maps" />
+                <data android:scheme="https" android:host="g.co" android:pathPrefix="/kgs" />
+                <data android:scheme="https" android:host="share.google" />
+                <data android:scheme="http" android:host="maps.google.com" />
+                <data android:scheme="http" android:host="www.google.com" android:pathPrefix="/maps" />
+                <data android:scheme="http" android:host="google.com" android:pathPrefix="/maps" />
+                <data android:scheme="http" android:host="maps.app.goo.gl" />
+                <data android:scheme="http" android:host="goo.gl" android:pathPrefix="/maps" />
+                <data android:scheme="http" android:host="g.co" android:pathPrefix="/kgs" />
+                <data android:scheme="http" android:host="share.google" />
             </intent-filter>
         </activity>
 

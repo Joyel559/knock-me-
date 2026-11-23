@@ -2,14 +2,29 @@ package com.joyel.tripguard.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.joyel.tripguard.BuildConfig
 import com.joyel.tripguard.share.ShareIntentParser
 import com.joyel.tripguard.share.SharedDestinationHolder
+import com.joyel.tripguard.share.shareSourceLabel
+import com.joyel.tripguard.trip.TripRepository
+import com.joyel.tripguard.trip.TripState
+import com.joyel.tripguard.service.ACTION_STOP
+import com.joyel.tripguard.service.TripService
 import com.joyel.tripguard.ui.onboarding.OnboardingRepository
 import com.joyel.tripguard.ui.onboarding.OnboardingScreen
 import com.joyel.tripguard.ui.screens.ActiveTripScreen
@@ -22,6 +37,13 @@ import com.joyel.tripguard.ui.screens.TripSetupScreen
 import com.joyel.tripguard.ui.theme.TripGuardTheme
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+
+private const val SHARE_LOG_TAG = "KnockMeShare"
+
+/** Pure decision used by [MainActivity] when a share arrives: a running trip must be confirmed
+ * before it's replaced. Kept pure/top-level so it's unit-testable without an Activity. */
+fun shouldPromptReplaceTrip(activeTripState: TripState?): Boolean =
+    activeTripState != null && activeTripState != TripState.IDLE && activeTripState != TripState.FINISHED
 
 object Routes {
     const val HOME = "home"
@@ -38,6 +60,12 @@ object Routes {
 }
 
 class MainActivity : ComponentActivity() {
+
+    private var navControllerRef: NavController? = null
+    /** Holds a raw share that arrived while a trip is already ACTIVE, until the user picks
+     * Replace or Keep current trip in the dialog shown from [setContent]. */
+    private val activeTripConflictState = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -52,21 +80,19 @@ class MainActivity : ComponentActivity() {
             sharedText != null -> Routes.SETUP
             else -> Routes.HOME
         }
-        if (sharedText != null && !needsOnboarding) {
-            SharedDestinationHolder.resolving = true
-            lifecycleScope.launch {
-                val result = ShareIntentParser().parse(sharedText)
-                // "near" (current location) isn't available this early in a cold start, so the
-                // parse runs unbiased here; Trip Setup's own Paste button passes it when it has one.
-                SharedDestinationHolder.pending = result
-                SharedDestinationHolder.parseFailed = result == null
-                SharedDestinationHolder.resolving = false
-            }
+        // Capture the share even while onboarding is required: handleIncomingIntent stashes it
+        // in SharedDestinationHolder regardless, so it's picked up by TripSetupScreen once
+        // onboarding finishes and navigates there (see the ONBOARDING composable below). Never
+        // lose the shared place because permission/GPS wasn't ready yet.
+        if (sharedText != null) {
+            handleIncomingIntent(sharedText, navigateIfAlreadyOpen = false)
         }
 
         setContent {
             TripGuardTheme {
                 val navController = rememberNavController()
+                navControllerRef = navController
+                val conflictText = activeTripConflictState.value
                 NavHost(navController = navController, startDestination = startDestination) {
                     composable(Routes.HOME) { HomeScreen(navController) }
                     composable(Routes.SETUP) { TripSetupScreen(navController) }
@@ -83,7 +109,12 @@ class MainActivity : ComponentActivity() {
                     composable(Routes.PRIVACY) { com.joyel.tripguard.ui.screens.PrivacyScreen(navController) }
                     composable(Routes.ONBOARDING) {
                         OnboardingScreen(onFinished = {
-                            if (!navController.popBackStack()) {
+                            val target = if (SharedDestinationHolder.pending != null ||
+                                SharedDestinationHolder.resolving || SharedDestinationHolder.parseFailed
+                            ) Routes.SETUP else null
+                            if (target != null) {
+                                navController.navigate(target) { popUpTo(Routes.ONBOARDING) { inclusive = true } }
+                            } else if (!navController.popBackStack()) {
                                 navController.navigate(Routes.HOME) {
                                     popUpTo(Routes.ONBOARDING) { inclusive = true }
                                 }
@@ -91,7 +122,67 @@ class MainActivity : ComponentActivity() {
                         })
                     }
                 }
+                if (conflictText != null) {
+                    AlertDialog(
+                        onDismissRequest = { activeTripConflictState.value = null },
+                        containerColor = Color.Black,
+                        title = { Text("A trip is running", color = Color.White) },
+                        text = { Text("Replace it with this destination?", color = Color.LightGray) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                activeTripConflictState.value = null
+                                startService(Intent(this, TripService::class.java).setAction(ACTION_STOP))
+                                resolveAndGoToSetup(conflictText)
+                            }) { Text("Replace", color = Color.White) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { activeTripConflictState.value = null }) {
+                                Text("Keep current trip", color = Color.White)
+                            }
+                        }
+                    )
+                }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val sharedText = extractShareText(intent) ?: return
+        handleIncomingIntent(sharedText, navigateIfAlreadyOpen = true)
+    }
+
+    /** Single entry point for both cold start and an already-running app receiving a new share. */
+    private fun handleIncomingIntent(sharedText: String, navigateIfAlreadyOpen: Boolean) {
+        if (BuildConfig.DEBUG) {
+            Log.d(SHARE_LOG_TAG, "action=${intent.action} data=${intent.dataString} extraText=${intent.getStringExtra(Intent.EXTRA_TEXT)}")
+        }
+        lifecycleScope.launch {
+            val activeTrip = runCatching { TripRepository(this@MainActivity).getActiveTrip() }.getOrNull()
+            if (shouldPromptReplaceTrip(activeTrip?.state)) {
+                activeTripConflictState.value = sharedText
+                return@launch
+            }
+            resolveAndGoToSetup(sharedText, navigateIfAlreadyOpen)
+        }
+    }
+
+    private fun resolveAndGoToSetup(sharedText: String, navigateIfAlreadyOpen: Boolean = true) {
+        SharedDestinationHolder.resolving = true
+        SharedDestinationHolder.pending = null
+        SharedDestinationHolder.parseFailed = false
+        SharedDestinationHolder.rawText = sharedText
+        if (navigateIfAlreadyOpen) {
+            navControllerRef?.navigate(Routes.SETUP)
+        }
+        lifecycleScope.launch {
+            // "near" (current location) isn't available this early in a cold start, so the
+            // parse runs unbiased here; Trip Setup's own Paste button passes it when it has one.
+            val result = ShareIntentParser().parse(sharedText)?.copy(source = shareSourceLabel(sharedText))
+            SharedDestinationHolder.pending = result
+            SharedDestinationHolder.parseFailed = result == null
+            SharedDestinationHolder.resolving = false
         }
     }
 

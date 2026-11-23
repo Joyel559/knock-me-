@@ -133,14 +133,33 @@ fun TripSetupScreen(navController: NavController) {
         TripPrefillHolder.pending = null
     }
 
+    var resolvingShare by remember { mutableStateOf(SharedDestinationHolder.resolving) }
     LaunchedEffect(Unit) {
-        while (SharedDestinationHolder.resolving) kotlinx.coroutines.delay(150)
+        while (SharedDestinationHolder.resolving) {
+            resolvingShare = true
+            kotlinx.coroutines.delay(150)
+        }
+        resolvingShare = false
         SharedDestinationHolder.pending?.let { applyParsed(it) }
         if (SharedDestinationHolder.parseFailed) {
-            errorText = "Could not read location, search manually"
+            errorText = "Could not read the exact place. Choose from the list or pick on the map."
+            val raw = SharedDestinationHolder.rawText
+            if (!raw.isNullOrBlank()) {
+                toQuery = raw
+                activeEditingField = EditingField.TO
+                scope.launch {
+                    searching = true
+                    val near = (locationRepo.state.value as? LocationState.Ready)?.let { LatLon(it.lat, it.lon) }
+                    val results = placeSearchRepo.search(raw, near = near)
+                    searching = false
+                    searchResults = results
+                    searchFailed = results.isEmpty()
+                }
+            }
         }
         SharedDestinationHolder.pending = null
         SharedDestinationHolder.parseFailed = false
+        SharedDestinationHolder.rawText = null
     }
 
     LaunchedEffect(Unit) {
@@ -401,7 +420,12 @@ fun TripSetupScreen(navController: NavController) {
                                 }
                             }
                         },
-                        label = { Text("To (Destination)*", color = Color.LightGray) },
+                        label = {
+                            Text(
+                                if (resolvingShare) "Reading shared place…" else "To (Destination)*",
+                                color = Color.LightGray
+                            )
+                        },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White,
@@ -570,6 +594,9 @@ fun TripSetupScreen(navController: NavController) {
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("Found this place", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                        parsed.source?.let {
+                            Text("Shared from $it", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                        }
                         if (parsed.isCoordinateLabel) {
                             Text(parsed.label, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                         } else {

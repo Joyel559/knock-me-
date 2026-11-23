@@ -151,4 +151,43 @@ class ShareIntentParserTest {
         assertNull(parser.parse(""))
         assertNull(parser.parse(null))
     }
+
+    @Test
+    fun `falls back to the name and address lines when the link fails to resolve`() = runTest {
+        // Simulates a Google Maps share where the short link can't be followed (no network, or
+        // the resolver fails) -- the name+address lines must still geocode to a destination.
+        val resolver = FakeRedirectResolver(emptyMap()) // resolve() returns the input unchanged
+        val parser = ShareIntentParser(
+            redirectResolver = resolver,
+            geocoder = FakeGeocodeProvider(
+                searchResults = mapOf(
+                    "Cafe Noir, MG Road, Bengaluru" to listOf(PlaceResult("Cafe Noir", LatLon(13.0, 77.6)))
+                )
+            )
+        )
+        val sharedText = "Cafe Noir\nMG Road, Bengaluru\nhttps://maps.app.goo.gl/dead-link"
+        val result = parser.parse(sharedText)
+        assertEquals("Cafe Noir", result!!.label)
+        assertEquals(13.0, result.location.lat, 0.0001)
+    }
+
+    @Test
+    fun `unreadable Rapido-style text with no destination falls through to null`() = runTest {
+        // A ride-hailing share with no place name, address, or coordinates -- the caller (Trip
+        // Setup) is the one that then falls back to putting the raw text in the search field.
+        val parser = ShareIntentParser(geocoder = FakeGeocodeProvider())
+        assertNull(parser.parse("Your Rapido ride is arriving in 3 minutes"))
+    }
+
+    @Test
+    fun `shareSourceLabel names Google Maps for a maps share link`() {
+        assertEquals("Google Maps", shareSourceLabel("Cafe Noir\nhttps://maps.app.goo.gl/abc123"))
+        assertEquals("Google Maps", shareSourceLabel("https://www.google.com/maps/place/Cafe"))
+    }
+
+    @Test
+    fun `shareSourceLabel is null for plain text with no URL`() {
+        assertNull(shareSourceLabel("12.9716, 77.5946"))
+        assertNull(shareSourceLabel(null))
+    }
 }

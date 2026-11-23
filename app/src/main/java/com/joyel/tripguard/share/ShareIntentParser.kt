@@ -193,3 +193,14 @@ class ShareIntentParser(
 
     private fun decode(s: String): String = runCatching { URLDecoder.decode(s, "UTF-8") }.getOrDefault(s)
 }
+
+/** Best-effort "Shared from X" label for the Trip Setup confirmation card, from the raw shared text. */
+fun shareSourceLabel(text: String?): String? {
+    if (text.isNullOrBlank()) return null
+    val host = URL_PATTERN.find(text)?.value?.let { runCatching { java.net.URI(it).host }.getOrNull() }
+        ?.lowercase() ?: return null
+    return when {
+        "goo.gl" in host || "google.com" in host || "g.co" in host || "share.google" in host -> "Google Maps"
+        else -> host
+    }
+}

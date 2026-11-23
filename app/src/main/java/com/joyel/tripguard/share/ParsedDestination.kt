@@ -12,5 +12,7 @@ data class ParsedDestination(
     val location: LatLon,
     val label: String,
     val isCoordinateLabel: Boolean = false,
-    val addressLine: String? = null
+    val addressLine: String? = null,
+    /** Host the share came from (e.g. "Google Maps"), shown as "Shared from X" in Trip Setup. */
+    val source: String? = null
 )
