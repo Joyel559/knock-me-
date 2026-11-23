@@ -52,6 +52,10 @@ duration (default 36 hours, editable in Settings) so nothing can track forever b
   sorts the results (your own places first, then nearest to you), and removes duplicates.
 - Paste or share a Google Maps link, shared text, a `geo:` link, plain coordinates, or a Plus
   Code (full or short) — Knock Me reads the destination straight out of it.
+- Share a place to Knock Me: tap a Google Maps link or use Share > Knock Me from Maps (or any app)
+  and Trip Setup opens with the destination already filled in, your current location as the start,
+  and a "Shared from Google Maps" note on the confirmation card — works cold or with the app
+  already open, and asks before replacing an already-running trip.
 - Saved places (Home, Office, custom) and recent trips, one tap to reuse.
 - Local trip history stored on the device, with a "Clear all history" option in Settings.
 - Custom alarm distances — set the main radius and the final alarm down to the exact meter.

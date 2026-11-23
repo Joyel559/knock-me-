@@ -405,3 +405,20 @@ Persist the active trip in DataStore as JSON so it survives process death and re
   Play Store submission materials. `scripts/verify_release.sh` runs the whole checklist
   (lint, tests, a release compile/R8 check, a forbidden-permissions scan) and prints PASS/FAIL.
   No release APK or AAB is ever committed or left behind by any of this.
+
+## 22. v1.7 changes ("share a place to Knock Me")
+
+- **Share-to-app**: tapping a Google Maps link (full URL, short `maps.app.goo.gl`/`goo.gl`/`g.co`
+  link, or `share.google`), or using Share > Knock Me from any app with text containing a place,
+  opens Trip Setup with the destination filled (name/address, pin, grey coordinates) and the
+  current location as the From field. Works from a cold start, from an already-running app
+  (`onNewIntent`), and survives the permission-onboarding flow if location isn't granted yet —
+  the share is never silently dropped.
+- **Active-trip conflict**: if a trip is already running when a share arrives, a calm dialog asks
+  "A trip is running. Replace it with this destination?" — Replace stops the old trip (recorded
+  as Stopped early in History) and continues with the new destination; Keep current trip drops the
+  share and leaves the running trip untouched.
+- **Unreadable shares** (e.g. a Rapido/Uber share with no destination) put the raw shared text
+  into the To field's search box instead of failing silently, with a calm "Could not read the
+  exact place" message. A DEBUG-only Logcat line (tag `KnockMeShare`) records what was actually
+  received, to make adding a parser case for a real app's share format straightforward later.
