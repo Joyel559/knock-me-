@@ -336,10 +336,12 @@ class TripService : Service() {
         }
         WatchdogScheduler.scheduleNext(applicationContext)
 
-        val fromState = com.joyel.tripguard.location.LocationRepositoryHolder.get(applicationContext).state.value
-        val fromLatLon = (fromState as? com.joyel.tripguard.location.LocationState.Ready)
-            ?.let { LatLon(it.lat, it.lon) } ?: trip.destination
-        historyRow = TripHistoryLogic.start(trip, fromLatLon, "Starting point", System.currentTimeMillis())
+        val fromLatLon = trip.fixedFrom ?: run {
+            val fromState = com.joyel.tripguard.location.LocationRepositoryHolder.get(applicationContext).state.value
+            (fromState as? com.joyel.tripguard.location.LocationState.Ready)
+                ?.let { LatLon(it.lat, it.lon) } ?: trip.destination
+        }
+        historyRow = TripHistoryLogic.start(trip, fromLatLon, trip.fromLabel, System.currentTimeMillis())
         historyRow?.let { row ->
             scope.launch {
                 historyRepo.insertTrip(row)

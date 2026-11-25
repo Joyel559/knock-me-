@@ -1,10 +1,9 @@
 package com.joyel.tripguard.ui.components
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -41,9 +40,9 @@ fun KnockDistanceChipsRow(
     onCustomClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier.horizontalScroll(rememberScrollState())
+        modifier = modifier
     ) {
         presetsMeters.forEach { m ->
             val selected = !isCustom && selectedMeters == m

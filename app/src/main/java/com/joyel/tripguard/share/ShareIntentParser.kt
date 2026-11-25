@@ -204,3 +204,15 @@ fun shareSourceLabel(text: String?): String? {
         else -> host
     }
 }
+
+/** Cheap, offline pattern check (no geocoding) used by the clipboard-offer bottom sheet to decide
+ * whether copied text is worth asking about: a Maps link/short link, a `geo:` URI, plain
+ * coordinates, or a Plus Code. Does not guarantee [ShareIntentParser.parse] will resolve it. */
+fun looksLikePlaceText(text: String?): Boolean {
+    if (text.isNullOrBlank()) return false
+    val trimmed = text.trim()
+    return URL_PATTERN.containsMatchIn(trimmed) ||
+        trimmed.startsWith("geo:", ignoreCase = true) ||
+        DECIMAL_COORD_PATTERN.matches(trimmed) ||
+        PLUS_CODE_PATTERN.containsMatchIn(trimmed)
+}

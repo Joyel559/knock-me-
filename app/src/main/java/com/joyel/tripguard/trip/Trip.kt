@@ -29,10 +29,16 @@ data class Trip(
     val finalAlarmMeters: Int = DEFAULT_FINAL_ALARM_RADIUS_M,
     val route: List<SerLatLon>?,
     val state: TripState,
-    val startedAt: Long
+    val startedAt: Long,
+    /** Null means "use the live GPS fix when the trip starts" (the old, still-default behavior).
+     * Non-null means the user picked a fixed From location in Trip Setup. */
+    val fromLat: Double? = null,
+    val fromLon: Double? = null,
+    val fromLabel: String = "Current location"
 ) {
     val destination: LatLon get() = LatLon(destLat, destLon)
     val routeLatLon: List<LatLon>? get() = route?.map { it.toLatLon() }
+    val fixedFrom: LatLon? get() = if (fromLat != null && fromLon != null) LatLon(fromLat, fromLon) else null
 }
 
 /** A single accepted/raw location reading fed into [TripEngine]. */

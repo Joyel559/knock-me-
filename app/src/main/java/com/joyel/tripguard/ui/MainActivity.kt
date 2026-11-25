@@ -18,6 +18,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.joyel.tripguard.BuildConfig
+import com.joyel.tripguard.share.PendingPickRepository
+import com.joyel.tripguard.share.PickTarget
 import com.joyel.tripguard.share.ShareIntentParser
 import com.joyel.tripguard.share.SharedDestinationHolder
 import com.joyel.tripguard.share.shareSourceLabel
@@ -177,6 +179,12 @@ class MainActivity : ComponentActivity() {
             navControllerRef?.navigate(Routes.SETUP)
         }
         lifecycleScope.launch {
+            // Peek only — Trip Setup itself owns clearing the pending pick once it has safely
+            // applied the pick's draft, so a race between this and its own mount effect can't
+            // lose the draft.
+            val pick = runCatching { PendingPickRepository(this@MainActivity).peek() }.getOrNull()
+            SharedDestinationHolder.target = pick?.target ?: PickTarget.TO
+            SharedDestinationHolder.targetWasDefault = pick == null
             // "near" (current location) isn't available this early in a cold start, so the
             // parse runs unbiased here; Trip Setup's own Paste button passes it when it has one.
             val result = ShareIntentParser().parse(sharedText)?.copy(source = shareSourceLabel(sharedText))

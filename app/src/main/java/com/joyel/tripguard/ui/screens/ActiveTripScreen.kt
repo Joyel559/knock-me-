@@ -10,12 +10,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.joyel.tripguard.geo.LatLon
 import com.joyel.tripguard.service.ACTION_STOP
 import com.joyel.tripguard.service.TripService
 import com.joyel.tripguard.service.TripServiceHolder
+import com.joyel.tripguard.share.viewLocationInGoogleMaps
+import com.joyel.tripguard.trip.Mode
 import com.joyel.tripguard.ui.Routes
-import com.joyel.tripguard.ui.components.TripMap
 
 @Composable
 fun ActiveTripScreen(navController: NavController) {
@@ -46,15 +46,21 @@ fun ActiveTripScreen(navController: NavController) {
             if (trip != null) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.DarkGray),
-                    modifier = Modifier.fillMaxWidth().height(240.dp).padding(top = 16.dp)
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
                 ) {
-                    TripMap(
-                        modifier = Modifier.fillMaxSize(),
-                        center = LatLon(trip.destLat, trip.destLon),
-                        destination = LatLon(trip.destLat, trip.destLon),
-                        radiusMeters = trip.radiusMeters.toDouble(),
-                        route = trip.routeLatLon
-                    )
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("From: ${trip.fromLabel}", color = Color.White)
+                        Text("To: ${trip.destLabel}", color = Color.White, modifier = Modifier.padding(top = 4.dp))
+                        Text(
+                            "Radius: ${trip.radiusMeters} m · Mode: ${if (trip.mode == Mode.CAB) "Cab" else "Bus/Train"}",
+                            color = Color.LightGray,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        TextButton(
+                            modifier = Modifier.padding(top = 4.dp),
+                            onClick = { viewLocationInGoogleMaps(context, trip.destLat, trip.destLon, trip.destLabel) }
+                        ) { Text("View destination in Google Maps", color = Color.White) }
+                    }
                 }
             }
 

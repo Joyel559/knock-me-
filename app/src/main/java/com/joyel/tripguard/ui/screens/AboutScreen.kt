@@ -18,8 +18,7 @@ private val OPEN_SOURCE_LIBRARIES = listOf(
     LicensedLibrary("Jetpack Compose, AndroidX (Core, Lifecycle, Navigation, DataStore, Room)", "Apache License 2.0"),
     LicensedLibrary("Kotlin, kotlinx.coroutines, kotlinx.serialization", "Apache License 2.0"),
     LicensedLibrary("OkHttp, Okio", "Apache License 2.0"),
-    LicensedLibrary("osmdroid", "GNU Lesser General Public License 2.1"),
-    LicensedLibrary("OpenStreetMap data (via Nominatim, Photon, OSRM, osmdroid tiles)", "Open Database License (ODbL)"),
+    LicensedLibrary("Search and route data © OpenStreetMap contributors (via Nominatim, Photon, OSRM)", "Open Database License (ODbL)"),
 )
 
 @Composable
@@ -61,7 +60,7 @@ fun AboutScreen(navController: NavController) {
 
             Text("Map data", color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp))
             Text(
-                "Map data © OpenStreetMap contributors, available under the Open Database License.",
+                "Search and route data © OpenStreetMap contributors, available under the Open Database License.",
                 color = Color.LightGray,
                 modifier = Modifier.padding(top = 4.dp)
             )

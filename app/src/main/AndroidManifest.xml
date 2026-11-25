@@ -15,6 +15,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- So ActivityNotFoundException/package-visibility checks for the Maps app are accurate
+         (Android 11+ hides other apps' packages by default without this). -->
+    <queries>
+        <package android:name="com.google.android.apps.maps" />
+    </queries>
+
     <application
         android:name=".TripGuardApp"
         android:allowBackup="false"
@@ -28,7 +34,7 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.TripGuard">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
