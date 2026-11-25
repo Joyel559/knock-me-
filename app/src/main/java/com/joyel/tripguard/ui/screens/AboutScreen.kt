@@ -39,6 +39,12 @@ fun AboutScreen(navController: NavController) {
                 color = Color.LightGray,
                 modifier = Modifier.padding(top = 8.dp)
             )
+            Text(
+                "Built ${com.joyel.tripguard.BuildConfig.BUILD_DATE} · ${com.joyel.tripguard.BuildConfig.GIT_COMMIT}",
+                color = Color.Gray,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 2.dp)
+            )
 
             Text(
                 "A travel alarm that wakes you before your stop and warns you when your ride " +

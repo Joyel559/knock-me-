@@ -288,6 +288,13 @@ fun SettingsScreen(navController: NavController) {
             }
 
             PermissionsChecklist(modifier = Modifier.padding(top = 24.dp))
+
+            Text(
+                "Knock Me ${com.joyel.tripguard.BuildConfig.VERSION} · built ${com.joyel.tripguard.BuildConfig.BUILD_DATE} · ${com.joyel.tripguard.BuildConfig.GIT_COMMIT}",
+                color = Color.Gray,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
+            )
         }
     }
 }

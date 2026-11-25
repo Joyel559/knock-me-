@@ -1,4 +1,7 @@
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Properties
+import java.util.TimeZone
 
 plugins {
     alias(libs.plugins.android.application)
@@ -39,6 +42,19 @@ android {
         buildConfigField("String", "NOMINATIM_BASE_URL", "\"${gradleProp("NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org")}\"")
         buildConfigField("String", "PHOTON_BASE_URL", "\"${gradleProp("PHOTON_BASE_URL", "https://photon.komoot.io")}\"")
         buildConfigField("String", "CONTACT_EMAIL", "\"${gradleProp("KNOCKME_CONTACT_EMAIL", "contact@example.com")}\"")
+
+        val kolkataNow = SimpleDateFormat("yyyy-MM-dd HH:mm").apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date())
+        buildConfigField("String", "BUILD_DATE", "\"$kolkataNow\"")
+        buildConfigField("String", "VERSION", "\"${gradleProp("APP_VERSION_NAME", "1.0.0")}\"")
+        val gitHashForBuildConfig = try {
+            val process = ProcessBuilder("git", "rev-parse", "--short", "HEAD").directory(rootDir).start()
+            val out = process.inputStream.bufferedReader().readText().trim()
+            process.waitFor()
+            out.ifBlank { "unknown" }
+        } catch (e: Exception) {
+            "unknown"
+        }
+        buildConfigField("String", "GIT_COMMIT", "\"$gitHashForBuildConfig\"")
     }
 
     signingConfigs {
@@ -119,3 +135,49 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
 }
+
+// Generated (never committed, see .gitignore) and packed into the APK at assets/build_info.txt
+// so About/Settings can show the exact build that's installed.
+val generateBuildInfo = tasks.register("generateBuildInfo") {
+    doLast {
+        val gitHash = try {
+            val process = ProcessBuilder("git", "rev-parse", "--short", "HEAD")
+                .directory(rootProject.rootDir)
+                .start()
+            val out = process.inputStream.bufferedReader().readText().trim()
+            process.waitFor()
+            out.ifBlank { "unknown" }
+        } catch (e: Exception) {
+            "unknown"
+        }
+
+        val changelogFile = rootProject.file("CHANGELOG.md")
+        val changes = if (changelogFile.exists()) {
+            changelogFile.readLines()
+                .dropWhile { !it.startsWith("## ") }
+                .drop(1)
+                .map { it.trim() }
+                .filter { it.startsWith("-") }
+                .take(5)
+                .joinToString("; ") { it.removePrefix("-").trim() }
+        } else {
+            "unknown"
+        }
+
+        val buildDate = SimpleDateFormat("yyyy-MM-dd HH:mm").apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date())
+        val assetsDir = file("src/main/assets")
+        assetsDir.mkdirs()
+        file("src/main/assets/build_info.txt").writeText(
+            """
+            appName=Knock Me
+            versionName=${gradleProp("APP_VERSION_NAME", "1.0.0")}
+            versionCode=${gradleProp("APP_VERSION_CODE", "1")}
+            buildDate=$buildDate
+            gitCommit=$gitHash
+            changes: $changes
+            """.trimIndent()
+        )
+    }
+}
+
+tasks.named("preBuild") { dependsOn(generateBuildInfo) }

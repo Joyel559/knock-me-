@@ -11,6 +11,8 @@ captures/
 *.apk
 !knockme.apk
 *.aab
+dist/
+app/src/main/assets/build_info.txt
 
 # Release signing — never commit a real keystore or its passwords.
 keystore.properties
