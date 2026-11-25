@@ -4,6 +4,7 @@ import com.joyel.tripguard.geo.LatLon
 import com.joyel.tripguard.search.PlaceResult
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -189,5 +190,20 @@ class ShareIntentParserTest {
     fun `shareSourceLabel is null for plain text with no URL`() {
         assertNull(shareSourceLabel("12.9716, 77.5946"))
         assertNull(shareSourceLabel(null))
+    }
+
+    @Test
+    fun `looksLikePlaceText recognizes a maps link, geo URI, coordinates, and a Plus Code`() {
+        assertTrue(looksLikePlaceText("https://maps.app.goo.gl/abc123"))
+        assertTrue(looksLikePlaceText("geo:12.9716,77.5946"))
+        assertTrue(looksLikePlaceText("12.9716, 77.5946"))
+        assertTrue(looksLikePlaceText("7FG49QCJ+2VX"))
+    }
+
+    @Test
+    fun `looksLikePlaceText rejects blank or ordinary text`() {
+        assertFalse(looksLikePlaceText(null))
+        assertFalse(looksLikePlaceText(""))
+        assertFalse(looksLikePlaceText("your ride is arriving in 3 minutes"))
     }
 }

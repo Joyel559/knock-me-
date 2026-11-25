@@ -31,3 +31,20 @@ data class PendingPick(
 )
 
 fun PendingPick.isExpired(now: Long): Boolean = now - createdAt > PENDING_PICK_EXPIRY_MS
+
+/** Which field an incoming share should fill: the pick's target if one is pending (and not
+ * expired), else To — "a share with no pending pick fills To". */
+fun resolveShareTarget(pick: PendingPick?): PickTarget = pick?.target ?: PickTarget.TO
+
+/** True only when [resolveShareTarget] landed on To because nothing was pending (not because the
+ * user explicitly picked To) — drives the "Use as start instead" button. */
+fun shareTargetWasDefault(pick: PendingPick?): Boolean = pick == null
+
+/** Offer the clipboard-paste bottom sheet only while a pick is pending, for text that looks like
+ * a place and wasn't already offered (and dismissed/used) last time. */
+fun shouldOfferClipboard(hasPendingPick: Boolean, clipboardText: String?, lastOfferedText: String?): Boolean {
+    if (!hasPendingPick) return false
+    if (clipboardText.isNullOrBlank()) return false
+    if (clipboardText == lastOfferedText) return false
+    return looksLikePlaceText(clipboardText)
+}

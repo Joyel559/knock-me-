@@ -6,6 +6,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
+import com.joyel.tripguard.share.PickTarget
 import com.joyel.tripguard.share.SharedDestinationHolder
 import com.joyel.tripguard.ui.MainActivity
 import kotlinx.coroutines.runBlocking
@@ -44,6 +45,8 @@ class ShareToTripSetupTest {
         SharedDestinationHolder.parseFailed = false
         SharedDestinationHolder.resolving = false
         SharedDestinationHolder.rawText = null
+        SharedDestinationHolder.target = PickTarget.TO
+        SharedDestinationHolder.targetWasDefault = false
     }
 
     @Test

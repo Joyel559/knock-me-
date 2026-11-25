@@ -299,7 +299,7 @@ fun TripSetupScreen(navController: NavController) {
                     val pick = pendingPickRepo.peek() ?: return@launch
                     val cm = context.getSystemService(android.content.ClipboardManager::class.java)
                     val clip = cm?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
-                    if (!clip.isNullOrBlank() && clip != lastClipboardOfferedText && looksLikePlaceText(clip)) {
+                    if (com.joyel.tripguard.share.shouldOfferClipboard(true, clip, lastClipboardOfferedText)) {
                         clipboardOfferText = clip
                         clipboardOfferTarget = pick.target
                         showClipboardOfferSheet = true
