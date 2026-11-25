@@ -422,3 +422,30 @@ Persist the active trip in DataStore as JSON so it survives process death and re
   into the To field's search box instead of failing silently, with a calm "Could not read the
   exact place" message. A DEBUG-only Logcat line (tag `KnockMeShare`) records what was actually
   received, to make adding a parser case for a real app's share format straightforward later.
+
+## 23. v1.8 changes ("remove in-app maps" + "Choose in Google Maps")
+
+- **No in-app map anywhere.** Trip Setup's map card, the full-screen map picker, the share
+  confirmation card's mini map, and Active Trip's map are all removed, along with the osmdroid
+  dependency — slow, and the confirmation card's own mini map was covering its own "Use this"/
+  "Pick on map instead" buttons on a real phone. Active Trip is now text-only: distance
+  remaining, status, From, To, radius, mode, and Stop. A small "View in Google Maps" text button
+  on each place card (and on Active Trip's destination) opens the pin in whatever app handles
+  `geo:` links, view-only, silently doing nothing if none is installed. Off-route detection still
+  fetches and uses a route internally (OSRM) — it's just never drawn.
+- **"Choose in Google Maps" for both From and To** replaces the old map picker. Tapping it saves
+  a `PendingPick` (which field, plus the whole unsaved Trip Setup draft) to DataStore with a
+  30-minute expiry, shows a one-time "search in Maps, then Share to Knock Me" hint, and opens
+  Google Maps (falling back to the browser if the app isn't installed). Sharing back from Maps
+  fills the pending field directly — no confirmation step, no second map. A share with no pending
+  pick fills To and offers "Use as start instead" (moves that place to From, clears To). While a
+  pick is pending, regaining focus checks the clipboard once for a Maps link/`geo:`
+  URI/coordinates/Plus Code and offers it in a small sheet, never otherwise.
+- **`MainActivity` launchMode is now `singleTask`** (was `singleTop`), fixing duplicate running
+  instances of the app after a share.
+- **Layout fix:** action rows and distance-preset chips use a wrapping `FlowRow` instead of a
+  horizontally-scrolling `Row`, fixing labels (e.g. "Paste") getting clipped at the screen edge on
+  a real phone.
+- **Build info:** version, build date (Asia/Kolkata), and the short git commit hash are baked into
+  the APK (`assets/build_info.txt`, generated at build time) and shown in small grey text on the
+  About screen and at the bottom of Settings.

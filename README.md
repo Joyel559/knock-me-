@@ -47,15 +47,19 @@ duration (default 36 hours, editable in Settings) so nothing can track forever b
 
 ## Features
 
-- Current location and destination fields, with search, pin-on-map, and paste support.
+- Current location and destination fields, with search, "Choose in Google Maps", and paste support.
 - No-API-key place search: searches your saved/recent places, Photon, and Nominatim at once,
   sorts the results (your own places first, then nearest to you), and removes duplicates.
 - Paste or share a Google Maps link, shared text, a `geo:` link, plain coordinates, or a Plus
   Code (full or short) — Knock Me reads the destination straight out of it.
-- Share a place to Knock Me: tap a Google Maps link or use Share > Knock Me from Maps (or any app)
-  and Trip Setup opens with the destination already filled in, your current location as the start,
-  and a "Shared from Google Maps" note on the confirmation card — works cold or with the app
-  already open, and asks before replacing an already-running trip.
+- Choose in Google Maps / Share to Knock Me: tap "Choose in Google Maps" on From or To (opens
+  Google Maps to search, then Share > Knock Me fills the field directly, no extra map, no confirm
+  step), or share a place straight from Maps or any app — Trip Setup opens with the destination
+  filled in and a "Shared from Google Maps" note. Works cold or with the app already open, asks
+  before replacing an already-running trip, and keeps your typed fields safe while you're away in
+  Maps.
+- No in-app map anywhere — it was slow and not needed. A small "View in Google Maps" button on
+  each place card opens the pin in Google Maps (or your browser) to check it, view-only.
 - Saved places (Home, Office, custom) and recent trips, one tap to reuse.
 - Local trip history stored on the device, with a "Clear all history" option in Settings.
 - Custom alarm distances — set the main radius and the final alarm down to the exact meter.
@@ -68,6 +72,9 @@ duration (default 36 hours, editable in Settings) so nothing can track forever b
 - One clear Stop button that actually stops everything (alarm, tracking, service).
 
 ## Screenshots
+
+*(The Trip Setup and Active Trip screenshots below are from before v1.8 removed the in-app map —
+they need refreshing.)*
 
 <table>
 <tr>
@@ -92,7 +99,7 @@ row. The alarm uses a full-screen intent so it can wake the screen and ring even
 - Fused Location Provider (Google Play services) with a platform-location fallback
 - Room (local trip history, saved places)
 - DataStore (settings, active trip)
-- osmdroid (map tiles), Photon and Nominatim (search/geocoding), OSRM (routing)
+- Photon and Nominatim (search/geocoding), OSRM (routing) — no in-app map, no map tile library
 - No API keys required anywhere.
 
 ## Privacy
