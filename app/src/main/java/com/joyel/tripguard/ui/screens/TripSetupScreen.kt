@@ -131,7 +131,8 @@ fun TripSetupScreen(navController: NavController) {
     var settings by remember { mutableStateOf(com.joyel.tripguard.trip.AppSettings()) }
     var showLinksNotice by remember { mutableStateOf(false) }
 
-    val currentReadyLatLon0 = (LocationRepositoryHolder.get(context).state.value as? LocationState.Ready)?.let { LatLon(it.lat, it.lon) }
+    val locationStateForNear by LocationRepositoryHolder.get(context).state.collectAsState()
+    val currentReadyLatLon0 = (locationStateForNear as? LocationState.Ready)?.let { LatLon(it.lat, it.lon) }
 
     fun clearFrom() {
         fromLocation = null

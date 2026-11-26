@@ -1,5 +1,25 @@
 # Changelog
 
+## v2.0 — 2026-11-26
+
+- Rebuilt how a shared Google Maps short link (`maps.app.goo.gl/...`) is resolved — it used to
+  show "No match" because a short link carries no name and no coordinates by itself.
+- New `PlaceInputResolver.resolve(text)`: one entry point for share, paste, clipboard-offer, and
+  typed/pasted links in either field. Emits "Reading place…" immediately, then the resolved place
+  within 1.5s typical / 4s hard timeout.
+- Two short-link resolvers race in parallel: a local redirect-follow (reads the name from the
+  final URL, confirmed by a real test that it never carries coordinates) and the public
+  mapu.retiolus.net unshortener (usually returns exact coordinates + name in one request) — the
+  first valid result wins, the loser is cancelled. A new Settings → Links switch (default ON)
+  turns the online resolver off.
+- 30-day Room-backed link cache so sharing the same link twice resolves instantly the second time.
+- A resolve failure now shows a calm grey card ("Could not read this link.") with Try again /
+  View link in Google Maps / Paste coordinates — no red text, no raw link ever shown in a field.
+- Settings → Link debug (debug builds only): the last 20 resolves, which resolver won, and how
+  long each took.
+- Deleted the old `ShareIntentParser`/`RedirectResolver`/`ParsedDestination` entirely — see
+  docs/CLEANUP.md.
+
 ## v1.8 — 2026-11-26
 
 - Removed every in-app map (Trip Setup, Active Trip, the share confirmation card) and the
