@@ -106,7 +106,9 @@ row. The alarm uses a full-screen intent so it can wake the screen and ring even
 
 Everything stays on your phone. No accounts, no analytics, no cloud sync. The only network
 calls are to the keyless public Photon, Nominatim, and OSRM services, used to search for places
-and fetch a route — no personal data is sent beyond the coordinates needed for that request.
+and fetch a route, plus mapu.retiolus.net when you share/paste a shortened Google Maps link
+(toggle in Settings → Links) — no personal data is sent beyond the coordinates or link needed for
+that one request.
 
 ## Permissions: Lean mode vs Max reliability
 

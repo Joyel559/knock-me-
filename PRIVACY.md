@@ -25,6 +25,11 @@ coordinates involved to the keyless public map services that answer that one req
 
 - **Nominatim** and **Photon** (OpenStreetMap-based) for place search and reverse geocoding.
 - **OSRM** for route calculation.
+- **mapu.retiolus.net**, a public link-unshortening service, when you share or paste a shortened
+  Google Maps link (`maps.app.goo.gl` and similar) — only to read where that link points to,
+  faster than following it from your phone alone. Turn this off in Settings → Links ("Use online
+  link resolver"); with it off, Knock Me still opens the short link directly from your phone to
+  read it, it just doesn't also ask this third-party service.
 
 These are free, public, no-API-key services. No account identifier, device ID, or advertising ID
 is attached to those requests. If routing or search is unavailable, Knock Me falls back to the

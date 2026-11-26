@@ -70,6 +70,12 @@ fun AboutScreen(navController: NavController) {
                 color = Color.LightGray,
                 modifier = Modifier.padding(top = 4.dp)
             )
+            Text(
+                "A shared Google Maps link may also be sent to mapu.retiolus.net to read it faster " +
+                    "— turn off in Settings → Links.",
+                color = Color.LightGray,
+                modifier = Modifier.padding(top = 4.dp)
+            )
 
             Text("Open-source licenses", color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp))
             OPEN_SOURCE_LIBRARIES.forEach { lib ->

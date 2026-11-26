@@ -32,6 +32,9 @@ in the listing description / this doc for transparency)
   - Nominatim (OpenStreetMap) — search/reverse geocoding
   - Photon (komoot.io, OpenStreetMap-based) — search/reverse geocoding
   - OSRM (project-osrm.org) — route calculation
+  - mapu.retiolus.net — resolves a shared/pasted shortened Google Maps link (v2.0), only when
+    Settings → Links → "Use online link resolver" is on (default on). Off, the short link is
+    still opened directly from the user's own phone, just without also asking this service.
 - No account ID, device ID, or advertising ID is attached to these requests by Knock Me.
 - These are third-party services Knock Me doesn't operate; see their own privacy policies for
   what they do with an inbound request (typically: answer it, standard web server logs).
@@ -50,7 +53,7 @@ in the listing description / this doc for transparency)
 ## Is all of the user data collected encrypted in transit?
 
 Yes — `usesCleartextTraffic="false"` plus a `network_security_config.xml` that only trusts
-HTTPS; all three third-party services are called over HTTPS.
+HTTPS; all four third-party services are called over HTTPS.
 
 ## Can users request that their data is deleted?
 
