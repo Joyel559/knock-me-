@@ -449,3 +449,30 @@ Persist the active trip in DataStore as JSON so it survives process death and re
 - **Build info:** version, build date (Asia/Kolkata), and the short git commit hash are baked into
   the APK (`assets/build_info.txt`, generated at build time) and shown in small grey text on the
   About screen and at the bottom of Settings.
+
+## 24. v2.0 changes ("rebuild shared Google Maps link -> place")
+
+- **The real-phone bug:** a shared Google Maps short link (`maps.app.goo.gl/...`) carries no name
+  and no coordinates by itself — it's only an opaque id. v1.8's parser put the raw link straight
+  into the search box and showed "No match." Confirmed with real `curl` tests against two actual
+  short links (see `docs/MEMORY.md`): the redirect this gives has a *name* (from the destination
+  URL's path) but never coordinates, and fetching that final page's body doesn't yield
+  coordinates either (empty meta tags). A public unshortener (`mapu.retiolus.net`) does return
+  exact coordinates and a name in one request for the same link.
+- **`PlaceInputResolver.resolve(text): Flow<ResolveState>`** is now the single entry point for
+  every share, paste, clipboard-offer, and typed/pasted-link path (replacing the old
+  `ShareIntentParser` entirely — see `docs/CLEANUP.md`). Emits `Reading` immediately, then `Found`
+  within a 4-second budget (typically under 1.5s), or `Failed`. Pipeline: offline parse (`geo:`,
+  coordinates, Plus Codes, a full Maps URL's own pin) → a short-link race between a local
+  redirect-follow and the online unshortener (first valid result wins, the loser is cancelled) →
+  a Photon/Nominatim name fallback → a background reverse-geocode if only coordinates were found.
+  A 30-day Room-backed cache (+ memory LRU) skips the network entirely for a link seen before.
+- **No raw link is ever shown in a field.** While resolving, the field shows "Reading place…" (and
+  whatever name the shared text itself carried, if any) with a small spinner. On failure, a calm
+  grey card — "Could not read this link." with Try again / View link in Google Maps / Paste
+  coordinates — replaces the old red error line; red stays reserved for the alarm screen and the
+  Stop button.
+- **Settings → Links**: "Use online link resolver" (default on) — turns off sending the shared
+  link to the third-party unshortener; the local redirect-follow still works either way. Settings
+  → Link debug (debug builds only) shows the last 20 resolves, which resolver won, and how long
+  each took.
