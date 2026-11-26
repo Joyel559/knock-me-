@@ -82,3 +82,15 @@ interface PlaceCacheDao {
     @Query("DELETE FROM place_cache WHERE cachedAt < :olderThan")
     suspend fun clearOlderThan(olderThan: Long)
 }
+
+@Dao
+interface LinkCacheDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(entry: LinkCacheEntry)
+
+    @Query("SELECT * FROM link_cache WHERE url = :url")
+    suspend fun get(url: String): LinkCacheEntry?
+
+    @Query("DELETE FROM link_cache WHERE resolvedAt < :olderThan")
+    suspend fun clearOlderThan(olderThan: Long)
+}

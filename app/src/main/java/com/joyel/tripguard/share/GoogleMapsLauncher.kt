@@ -30,3 +30,11 @@ fun viewLocationInGoogleMaps(context: Context, lat: Double, lon: Double, label: 
         context.startActivity(Intent(Intent.ACTION_VIEW, uri))
     }
 }
+
+/** Opens a raw URL (e.g. a short link that couldn't be resolved) in whatever app handles it.
+ * Silently does nothing if none can. */
+fun openUrlExternally(context: Context, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }
+}

@@ -11,7 +11,7 @@ private const val PROVIDER_TIMEOUT_MS = 6_000L
 /** The search/reverse-geocode surface [ShareIntentParser] needs, kept small and behind an
  * interface so tests can fake it instead of hitting the network. */
 interface GeocodeProvider {
-    suspend fun search(query: String, near: LatLon?): List<PlaceResult>
+    suspend fun search(query: String, near: LatLon?, countryCode: String? = null): List<PlaceResult>
     suspend fun reverse(lat: Double, lon: Double): String?
 }
 
@@ -21,13 +21,13 @@ class DefaultGeocodeProvider(
     private val nominatim: NominatimClient = NominatimClient(),
     private val photon: PhotonClient = PhotonClient()
 ) : GeocodeProvider {
-    override suspend fun search(query: String, near: LatLon?): List<PlaceResult> {
+    override suspend fun search(query: String, near: LatLon?, countryCode: String?): List<PlaceResult> {
         val photonResults = withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
             runCatching { photon.search(query, near) }.getOrDefault(emptyList())
         }.orEmpty()
         if (photonResults.isNotEmpty()) return photonResults
         return withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
-            runCatching { nominatim.search(query, near = near) }.getOrDefault(emptyList())
+            runCatching { nominatim.search(query, countryCode = countryCode, near = near) }.getOrDefault(emptyList())
         }.orEmpty()
     }
 

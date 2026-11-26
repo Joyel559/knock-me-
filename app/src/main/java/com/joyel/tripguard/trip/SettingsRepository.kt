@@ -23,7 +23,9 @@ data class AppSettings(
     val defaultFinalAlarmMeters: Int = DEFAULT_FINAL_ALARM_RADIUS_M,
     val searchCountryCode: String? = null,
     val maxTripHours: Int = 36,
-    val mapsPickerHintDismissed: Boolean = false
+    val mapsPickerHintDismissed: Boolean = false,
+    val useOnlineLinkResolver: Boolean = true,
+    val linksNoticeShown: Boolean = false
 ) {
     /** km rounded for display only; the stored value is always meters. */
     val defaultRadiusKm: Int get() = (defaultRadiusMeters / 1000.0).let { if (it < 1) 1 else it.toInt() }
@@ -40,6 +42,8 @@ private val KEY_FINAL_METERS = intPreferencesKey("default_final_alarm_meters")
 private val KEY_SEARCH_COUNTRY = stringPreferencesKey("search_country_code")
 private val KEY_MAX_TRIP_HOURS = intPreferencesKey("max_trip_hours")
 private val KEY_MAPS_PICKER_HINT_DISMISSED = booleanPreferencesKey("maps_picker_hint_dismissed")
+private val KEY_USE_ONLINE_LINK_RESOLVER = booleanPreferencesKey("use_online_link_resolver")
+private val KEY_LINKS_NOTICE_SHOWN = booleanPreferencesKey("links_notice_shown")
 
 class SettingsRepository(private val context: Context) {
 
@@ -55,7 +59,9 @@ class SettingsRepository(private val context: Context) {
             defaultFinalAlarmMeters = prefs[KEY_FINAL_METERS] ?: DEFAULT_FINAL_ALARM_RADIUS_M,
             searchCountryCode = prefs[KEY_SEARCH_COUNTRY],
             maxTripHours = prefs[KEY_MAX_TRIP_HOURS] ?: 36,
-            mapsPickerHintDismissed = prefs[KEY_MAPS_PICKER_HINT_DISMISSED] ?: false
+            mapsPickerHintDismissed = prefs[KEY_MAPS_PICKER_HINT_DISMISSED] ?: false,
+            useOnlineLinkResolver = prefs[KEY_USE_ONLINE_LINK_RESOLVER] ?: true,
+            linksNoticeShown = prefs[KEY_LINKS_NOTICE_SHOWN] ?: false
         )
     }
 
@@ -75,6 +81,8 @@ class SettingsRepository(private val context: Context) {
             next.searchCountryCode?.let { prefs[KEY_SEARCH_COUNTRY] = it }
             prefs[KEY_MAX_TRIP_HOURS] = next.maxTripHours
             prefs[KEY_MAPS_PICKER_HINT_DISMISSED] = next.mapsPickerHintDismissed
+            prefs[KEY_USE_ONLINE_LINK_RESOLVER] = next.useOnlineLinkResolver
+            prefs[KEY_LINKS_NOTICE_SHOWN] = next.linksNoticeShown
         }
     }
 }

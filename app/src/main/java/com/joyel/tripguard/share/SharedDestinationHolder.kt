@@ -1,12 +1,9 @@
 package com.joyel.tripguard.share
 
-/** One-shot holder: MainActivity writes it from an incoming share intent, TripSetupScreen reads+clears it. */
+/** One-shot holder: MainActivity writes the raw share text + which field it's for, TripSetupScreen
+ * reads+clears it and feeds [rawText] into [PlaceInputResolver.resolve] itself — resolving (the
+ * network work) happens in TripSetupScreen, not here, so this holder stays a trivial handoff. */
 object SharedDestinationHolder {
-    var pending: ParsedDestination? = null
-    var parseFailed: Boolean = false
-    var resolving: Boolean = false
-    /** The raw shared text, kept only so the To field can fall back to it as a search query
-     * when parsing fails (never lose the shared place, even unresolved). */
     var rawText: String? = null
     /** Which field this share should fill — FROM when it answered a pending "Choose in Google
      * Maps" pick for From, TO otherwise (including every spontaneous share with no pending pick). */

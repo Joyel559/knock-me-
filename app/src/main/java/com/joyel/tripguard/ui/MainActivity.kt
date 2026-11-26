@@ -19,9 +19,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.joyel.tripguard.BuildConfig
 import com.joyel.tripguard.share.PendingPickRepository
-import com.joyel.tripguard.share.ShareIntentParser
 import com.joyel.tripguard.share.SharedDestinationHolder
-import com.joyel.tripguard.share.shareSourceLabel
+import com.joyel.tripguard.share.resolveShareTarget
+import com.joyel.tripguard.share.shareTargetWasDefault
 import com.joyel.tripguard.trip.TripRepository
 import com.joyel.tripguard.trip.TripState
 import com.joyel.tripguard.service.ACTION_STOP
@@ -110,9 +110,7 @@ class MainActivity : ComponentActivity() {
                     composable(Routes.PRIVACY) { com.joyel.tripguard.ui.screens.PrivacyScreen(navController) }
                     composable(Routes.ONBOARDING) {
                         OnboardingScreen(onFinished = {
-                            val target = if (SharedDestinationHolder.pending != null ||
-                                SharedDestinationHolder.resolving || SharedDestinationHolder.parseFailed
-                            ) Routes.SETUP else null
+                            val target = if (SharedDestinationHolder.rawText != null) Routes.SETUP else null
                             if (target != null) {
                                 navController.navigate(target) { popUpTo(Routes.ONBOARDING) { inclusive = true } }
                             } else if (!navController.popBackStack()) {
@@ -170,9 +168,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun resolveAndGoToSetup(sharedText: String, navigateIfAlreadyOpen: Boolean = true) {
-        SharedDestinationHolder.resolving = true
-        SharedDestinationHolder.pending = null
-        SharedDestinationHolder.parseFailed = false
         SharedDestinationHolder.rawText = sharedText
         if (navigateIfAlreadyOpen) {
             navControllerRef?.navigate(Routes.SETUP)
@@ -180,16 +175,11 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             // Peek only — Trip Setup itself owns clearing the pending pick once it has safely
             // applied the pick's draft, so a race between this and its own mount effect can't
-            // lose the draft.
+            // lose the draft. The actual place resolution (PlaceInputResolver) runs inside
+            // TripSetupScreen, which has a current-location fix to bias it with.
             val pick = runCatching { PendingPickRepository(this@MainActivity).peek() }.getOrNull()
-            SharedDestinationHolder.target = com.joyel.tripguard.share.resolveShareTarget(pick)
-            SharedDestinationHolder.targetWasDefault = com.joyel.tripguard.share.shareTargetWasDefault(pick)
-            // "near" (current location) isn't available this early in a cold start, so the
-            // parse runs unbiased here; Trip Setup's own Paste button passes it when it has one.
-            val result = ShareIntentParser().parse(sharedText)?.copy(source = shareSourceLabel(sharedText))
-            SharedDestinationHolder.pending = result
-            SharedDestinationHolder.parseFailed = result == null
-            SharedDestinationHolder.resolving = false
+            SharedDestinationHolder.target = resolveShareTarget(pick)
+            SharedDestinationHolder.targetWasDefault = shareTargetWasDefault(pick)
         }
     }
 

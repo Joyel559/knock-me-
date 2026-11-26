@@ -11,6 +11,7 @@ class HistoryRepository(context: Context) {
     private val eventDao = db.routeAlarmEventDao()
     private val placeDao = db.savedPlaceDao()
     private val placeCacheDao = db.placeCacheDao()
+    private val linkCacheDao = db.linkCacheDao()
 
     suspend fun insertTrip(trip: TripHistory) = tripDao.insert(trip)
     suspend fun updateTrip(trip: TripHistory) = tripDao.update(trip)
@@ -36,6 +37,10 @@ class HistoryRepository(context: Context) {
     suspend fun getPlaceCache(query: String): PlaceCache? = placeCacheDao.get(query)
     suspend fun putPlaceCache(entry: PlaceCache) = placeCacheDao.put(entry)
     suspend fun clearOldPlaceCache(olderThan: Long) = placeCacheDao.clearOlderThan(olderThan)
+
+    suspend fun getLinkCache(url: String): LinkCacheEntry? = linkCacheDao.get(url)
+    suspend fun putLinkCache(entry: LinkCacheEntry) = linkCacheDao.put(entry)
+    suspend fun clearOldLinkCache(olderThan: Long) = linkCacheDao.clearOlderThan(olderThan)
 
     /** All saved places, used by trip history and search as "Recent"/"Saved" results. */
     suspend fun getAllTripsOnce(): List<TripHistory> = tripDao.getAll()

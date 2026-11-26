@@ -6,8 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [TripHistory::class, RouteAlarmEvent::class, SavedPlace::class, PlaceCache::class],
-    version = 4,
+    entities = [TripHistory::class, RouteAlarmEvent::class, SavedPlace::class, PlaceCache::class, LinkCacheEntry::class],
+    version = 5,
     exportSchema = false
 )
 abstract class HistoryDatabase : RoomDatabase() {
@@ -15,6 +15,7 @@ abstract class HistoryDatabase : RoomDatabase() {
     abstract fun routeAlarmEventDao(): RouteAlarmEventDao
     abstract fun savedPlaceDao(): SavedPlaceDao
     abstract fun placeCacheDao(): PlaceCacheDao
+    abstract fun linkCacheDao(): LinkCacheDao
 
     companion object {
         @Volatile private var instance: HistoryDatabase? = null

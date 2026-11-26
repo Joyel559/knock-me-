@@ -62,6 +62,18 @@ data class PlaceCache(
     val cachedAt: Long
 )
 
+/** Resolved short-link cache (v2.0 PlaceInputResolver), keyed by the exact share URL. 30-day TTL
+ * checked by the caller, same pattern as [PlaceCache]. */
+@Entity(tableName = "link_cache")
+data class LinkCacheEntry(
+    @PrimaryKey val url: String,
+    val lat: Double,
+    val lon: Double,
+    val name: String,
+    val address: String?,
+    val resolvedAt: Long
+)
+
 @Entity(tableName = "saved_place")
 data class SavedPlace(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

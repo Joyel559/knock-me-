@@ -19,6 +19,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
+import com.joyel.tripguard.BuildConfig
 import com.joyel.tripguard.geo.LatLon
 import com.joyel.tripguard.geo.haversineMeters
 import com.joyel.tripguard.history.HistoryRepository
@@ -31,15 +32,20 @@ import com.joyel.tripguard.search.PlaceResult
 import com.joyel.tripguard.search.PlaceSearchRepository
 import com.joyel.tripguard.service.ACTION_START
 import com.joyel.tripguard.service.TripService
-import com.joyel.tripguard.share.ParsedDestination
+import com.joyel.tripguard.share.LinkDebugLog
+import com.joyel.tripguard.share.OfflineParse
+import com.joyel.tripguard.share.Place
 import com.joyel.tripguard.share.PendingPick
 import com.joyel.tripguard.share.PendingPickRepository
 import com.joyel.tripguard.share.PickTarget
-import com.joyel.tripguard.share.ShareIntentParser
+import com.joyel.tripguard.share.PlaceInputResolver
+import com.joyel.tripguard.share.ResolveState
+import com.joyel.tripguard.share.RoomLinkCache
 import com.joyel.tripguard.share.SharedDestinationHolder
 import com.joyel.tripguard.share.TripSetupDraft
 import com.joyel.tripguard.share.looksLikePlaceText
 import com.joyel.tripguard.share.openGoogleMapsPicker
+import com.joyel.tripguard.share.openUrlExternally
 import com.joyel.tripguard.share.viewLocationInGoogleMaps
 import com.joyel.tripguard.trip.Mode
 import com.joyel.tripguard.trip.SerLatLon
@@ -59,7 +65,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
-private val DECIMAL_LOOKS_LIKE_COORDS = Regex("""-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+""")
 private val MAIN_RADIUS_PRESETS_M = listOf(1000, 2000, 3000, 5000)
 private val FINAL_ALARM_PRESETS_M = listOf(100, 200, 300, 500)
 private const val DEFAULT_CENTER_LAT = 12.9716
@@ -74,15 +79,24 @@ fun TripSetupScreen(navController: NavController) {
     val nominatim = remember { NominatimClient() }
     val placeSearchRepo = remember { PlaceSearchRepository(context) }
     val pendingPickRepo = remember { PendingPickRepository(context) }
+    val linkCache = remember { RoomLinkCache(context) }
 
     var fromLocation by remember { mutableStateOf<LatLon?>(null) }
     var fromLabel by remember { mutableStateOf("Current location") }
     var fromQuery by remember { mutableStateOf("") }
+    var fromPlace by remember { mutableStateOf<Place?>(null) }
+    var fromReading by remember { mutableStateOf(false) }
+    var fromFailed by remember { mutableStateOf(false) }
+    var fromFailedText by remember { mutableStateOf<String?>(null) }
 
     var destination by remember { mutableStateOf<LatLon?>(null) }
     var destLabel by remember { mutableStateOf("") }
     var toQuery by remember { mutableStateOf("") }
+    var destPlace by remember { mutableStateOf<Place?>(null) }
     var toFilledViaDefaultShare by remember { mutableStateOf(false) }
+    var toReading by remember { mutableStateOf(false) }
+    var toFailed by remember { mutableStateOf(false) }
+    var toFailedText by remember { mutableStateOf<String?>(null) }
 
     var activeEditingField by remember { mutableStateOf<EditingField?>(null) }
     var searchResults by remember { mutableStateOf<List<PlaceResult>>(emptyList()) }
@@ -114,15 +128,85 @@ fun TripSetupScreen(navController: NavController) {
     var clipboardOfferTarget by remember { mutableStateOf(PickTarget.TO) }
     var lastClipboardOfferedText by remember { mutableStateOf<String?>(null) }
 
-    fun applyParsedTo(target: PickTarget, parsed: ParsedDestination) {
+    var settings by remember { mutableStateOf(com.joyel.tripguard.trip.AppSettings()) }
+    var showLinksNotice by remember { mutableStateOf(false) }
+
+    val currentReadyLatLon0 = (LocationRepositoryHolder.get(context).state.value as? LocationState.Ready)?.let { LatLon(it.lat, it.lon) }
+
+    fun clearFrom() {
+        fromLocation = null
+        fromLabel = "Current location"
+        fromQuery = ""
+        fromPlace = null
+        fromFailed = false
+    }
+
+    fun clearTo() {
+        destination = null
+        destLabel = ""
+        toQuery = ""
+        destPlace = null
+        toFilledViaDefaultShare = false
+        toFailed = false
+    }
+
+    fun applyPlaceTo(target: PickTarget, place: Place) {
         if (target == PickTarget.FROM) {
-            fromLocation = parsed.location
-            fromLabel = parsed.label
-            fromQuery = parsed.label
+            fromLocation = place.location
+            fromLabel = place.name
+            fromQuery = place.name
+            fromPlace = place
+            fromFailed = false
+            com.joyel.tripguard.share.TripSetupTestState.lastAppliedFrom = place
         } else {
-            destination = parsed.location
-            destLabel = parsed.label
-            toQuery = parsed.label
+            destination = place.location
+            destLabel = place.name
+            toQuery = place.name
+            destPlace = place
+            toFilledViaDefaultShare = false
+            toFailed = false
+            com.joyel.tripguard.share.TripSetupTestState.lastAppliedTo = place
+        }
+    }
+
+    /** The single entry point (v2.0) for share/paste/clipboard/typed-link input: every call site
+     * below funnels through this instead of parsing text itself. */
+    fun resolveInto(target: PickTarget, text: String, onFound: (Place) -> Unit = {}) {
+        if (text.isBlank()) return
+        scope.launch {
+            val near = currentReadyLatLon0
+            val cc = runCatching { SettingsRepository(context).get().searchCountryCode }.getOrNull()
+            PlaceInputResolver(
+                linkCache = linkCache,
+                onlineResolverEnabled = {
+                    runCatching { SettingsRepository(context).get().useOnlineLinkResolver }.getOrDefault(true)
+                },
+                debugLog = { if (BuildConfig.DEBUG) LinkDebugLog.record(it) }
+            ).resolve(text, near = near, countryCode = cc).collect { state ->
+                when (state) {
+                    is ResolveState.Reading -> {
+                        if (target == PickTarget.FROM) {
+                            fromReading = true; fromFailed = false
+                            if (!state.name.isNullOrBlank()) fromQuery = state.name
+                        } else {
+                            toReading = true; toFailed = false
+                            if (!state.name.isNullOrBlank()) toQuery = state.name
+                        }
+                    }
+                    is ResolveState.Found -> {
+                        applyPlaceTo(target, state.place)
+                        if (target == PickTarget.FROM) fromReading = false else toReading = false
+                        onFound(state.place)
+                    }
+                    ResolveState.Failed -> {
+                        if (target == PickTarget.FROM) {
+                            fromReading = false; fromFailed = true; fromFailedText = text
+                        } else {
+                            toReading = false; toFailed = true; toFailedText = text
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -156,24 +240,11 @@ fun TripSetupScreen(navController: NavController) {
         finalAlarmMeters = d.finalAlarmMeters
     }
 
-    fun clearFrom() {
-        fromLocation = null
-        fromLabel = "Current location"
-        fromQuery = ""
-    }
-
-    fun clearTo() {
-        destination = null
-        destLabel = ""
-        toQuery = ""
-        toFilledViaDefaultShare = false
-    }
-
     fun startChooseInMaps(target: PickTarget) {
         scope.launch {
             pendingPickRepo.set(PendingPick(target, System.currentTimeMillis(), buildDraft()))
-            val settings = SettingsRepository(context).get()
-            if (settings.mapsPickerHintDismissed) {
+            val s = SettingsRepository(context).get()
+            if (s.mapsPickerHintDismissed) {
                 openGoogleMapsPicker(context)
             } else {
                 showMapsHintDialog = true
@@ -181,24 +252,17 @@ fun TripSetupScreen(navController: NavController) {
         }
     }
 
-    fun pasteInto(target: PickTarget, currentNear: LatLon?) {
+    fun pasteInto(target: PickTarget) {
         scope.launch {
             val cm = context.getSystemService(android.content.ClipboardManager::class.java)
-            val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString()
+            val clip = cm?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
             if (clip.isNullOrBlank()) {
                 errorText = "Nothing copied yet"
                 return@launch
             }
             pasteBusy = true
-            val parsed = ShareIntentParser().parse(clip, near = currentNear)
+            resolveInto(target, clip)
             pasteBusy = false
-            if (parsed != null) {
-                applyParsedTo(target, parsed)
-            } else {
-                errorText = "Could not read a location from that, search manually"
-                if (target == PickTarget.FROM) { fromQuery = clip; activeEditingField = EditingField.FROM }
-                else { toQuery = clip; activeEditingField = EditingField.TO }
-            }
         }
     }
 
@@ -228,47 +292,27 @@ fun TripSetupScreen(navController: NavController) {
         pendingPickRepo.consume()?.draft?.let { applyDraft(it) }
     }
 
-    var resolvingShare by remember { mutableStateOf(SharedDestinationHolder.resolving) }
-    var resolvingTarget by remember { mutableStateOf(SharedDestinationHolder.target) }
+    // Single entry point for an incoming share (cold start or onNewIntent): resolve it exactly
+    // the same way Paste/clipboard-offer do.
     LaunchedEffect(Unit) {
-        while (SharedDestinationHolder.resolving) {
-            resolvingShare = true
-            resolvingTarget = SharedDestinationHolder.target
-            kotlinx.coroutines.delay(150)
-        }
-        resolvingShare = false
+        val rawText = SharedDestinationHolder.rawText
         val target = SharedDestinationHolder.target
         val wasDefault = SharedDestinationHolder.targetWasDefault
-        SharedDestinationHolder.pending?.let {
-            applyParsedTo(target, it)
-            toFilledViaDefaultShare = target == PickTarget.TO && wasDefault
-        }
-        if (SharedDestinationHolder.parseFailed) {
-            errorText = "Could not read the exact place. Choose from the list or try Choose in Google Maps again."
-            val raw = SharedDestinationHolder.rawText
-            if (!raw.isNullOrBlank()) {
-                if (target == PickTarget.FROM) { fromQuery = raw; activeEditingField = EditingField.FROM }
-                else { toQuery = raw; activeEditingField = EditingField.TO }
-                scope.launch {
-                    searching = true
-                    val near = (locationRepo.state.value as? LocationState.Ready)?.let { LatLon(it.lat, it.lon) }
-                    val results = placeSearchRepo.search(raw, near = near)
-                    searching = false
-                    searchResults = results
-                    searchFailed = results.isEmpty()
-                }
-            }
-        }
-        SharedDestinationHolder.pending = null
-        SharedDestinationHolder.parseFailed = false
         SharedDestinationHolder.rawText = null
         SharedDestinationHolder.target = PickTarget.TO
         SharedDestinationHolder.targetWasDefault = false
+        if (rawText != null) {
+            resolveInto(target, rawText) {
+                if (target == PickTarget.TO && wasDefault) toFilledViaDefaultShare = true
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
         val settingsRepo = SettingsRepository(context)
         val defaults = settingsRepo.get()
+        settings = defaults
+        showLinksNotice = !defaults.linksNoticeShown
         radiusMeters = defaults.defaultRadiusMeters
         mode = defaults.defaultMode
         finalAlarmEnabled = defaults.defaultFinalAlarmEnabled
@@ -279,6 +323,26 @@ fun TripSetupScreen(navController: NavController) {
             if (fix != null) {
                 val cc = nominatim.reverseCountryCode(fix.lat, fix.lon)
                 if (cc != null) settingsRepo.update { it.copy(searchCountryCode = cc) }
+            }
+        }
+    }
+
+    // Warm-up (v2.0): a cheap HEAD to the Photon host, and to the unshortener host when the
+    // online switch is on, so the first real resolve isn't paying a cold-connection cost too.
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                okhttp3.OkHttpClient().newCall(
+                    okhttp3.Request.Builder().url(BuildConfig.PHOTON_BASE_URL).head().build()
+                ).execute().close()
+            }
+            val s = runCatching { SettingsRepository(context).get() }.getOrNull()
+            if (s?.useOnlineLinkResolver == true) {
+                runCatching {
+                    okhttp3.OkHttpClient().newCall(
+                        okhttp3.Request.Builder().url(BuildConfig.UNSHORTENER_BASE_URL).head().build()
+                    ).execute().close()
+                }
             }
         }
     }
@@ -333,8 +397,8 @@ fun TripSetupScreen(navController: NavController) {
         searching = true
         searchFailed = false
         kotlinx.coroutines.delay(600)
-        val settings = runCatching { SettingsRepository(context).get() }.getOrNull()
-        val results = placeSearchRepo.search(q, near = currentReadyLatLon, countryCode = settings?.searchCountryCode)
+        val s = runCatching { SettingsRepository(context).get() }.getOrNull()
+        val results = placeSearchRepo.search(q, near = currentReadyLatLon, countryCode = s?.searchCountryCode)
         searching = false
         searchResults = results
         searchFailed = results.isEmpty()
@@ -461,6 +525,34 @@ fun TripSetupScreen(navController: NavController) {
         ) {
             Text("Trip Setup", style = MaterialTheme.typography.titleLarge, color = Color.White, modifier = Modifier.padding(vertical = 8.dp))
 
+            if (showLinksNotice) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.DarkGray),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            "Sends the shared Google Maps link to mapu.retiolus.net to read the place faster. " +
+                                "Turn off to keep links on your phone. A short link is also opened directly from your phone.",
+                            color = Color.LightGray,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                            TextButton(onClick = {
+                                scope.launch {
+                                    SettingsRepository(context).update { it.copy(useOnlineLinkResolver = false, linksNoticeShown = true) }
+                                }
+                                showLinksNotice = false
+                            }) { Text("Turn off", color = Color.White) }
+                            TextButton(onClick = {
+                                scope.launch { SettingsRepository(context).update { it.copy(linksNoticeShown = true) } }
+                                showLinksNotice = false
+                            }) { Text("OK", color = Color.White) }
+                        }
+                    }
+                }
+            }
+
             // FROM CARD
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.DarkGray),
@@ -474,23 +566,17 @@ fun TripSetupScreen(navController: NavController) {
                             fromQuery = q
                             fromLabel = q.ifBlank { "Current location" }
                             fromLocation = null
+                            fromPlace = null
                             activeEditingField = EditingField.FROM
                             val pastedChunk = q.length - previousLength >= 15
-                            if (pastedChunk && looksLikePlaceText(q) && !pasteBusy) {
-                                pasteBusy = true
-                                scope.launch {
-                                    val parsed = ShareIntentParser().parse(q, near = currentReadyLatLon)
-                                    pasteBusy = false
-                                    if (parsed != null) applyParsedTo(PickTarget.FROM, parsed)
-                                }
-                            }
+                            if (pastedChunk && looksLikePlaceText(q)) resolveInto(PickTarget.FROM, q)
                         },
                         placeholder = { Text("Current location", color = Color.Gray) },
-                        label = {
-                            Text(
-                                if (resolvingShare && resolvingTarget == PickTarget.FROM) "Reading shared place…" else "From",
-                                color = Color.LightGray
-                            )
+                        label = { Text(if (fromReading) "Reading place…" else "From", color = Color.LightGray) },
+                        trailingIcon = {
+                            if (fromReading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                            }
                         },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,
@@ -512,30 +598,29 @@ fun TripSetupScreen(navController: NavController) {
                             savedPlaceTargetField = EditingField.FROM
                             showSavedPlacesDropdown = true
                         }) { Text("Saved places", color = Color.White) }
-                        TextButton(enabled = !pasteBusy, onClick = { pasteInto(PickTarget.FROM, currentReadyLatLon) }) {
+                        TextButton(enabled = !pasteBusy, onClick = { pasteInto(PickTarget.FROM) }) {
                             Text(if (pasteBusy) "Reading…" else "Paste", color = Color.White)
                         }
                     }
+                    Text(
+                        "Tip: in Google Maps, long-press a spot, tap the coordinates to copy them, then tap Paste.",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
 
-                    if (fromLocation != null) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.Black),
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
-                                Text(fromLabel, color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                                fromLocation?.let {
-                                    Text("%.5f, %.5f".format(it.lat, it.lon), color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                                }
-                                Row {
-                                    TextButton(onClick = { clearFrom(); activeEditingField = EditingField.FROM }) { Text("Change", color = Color.White) }
-                                    TextButton(onClick = {
-                                        fromLocation?.let { viewLocationInGoogleMaps(context, it.lat, it.lon, fromLabel) }
-                                    }) { Text("View in Google Maps", color = Color.White) }
-                                }
-                            }
-                        }
-                    }
+                    PlaceOrFailureCard(
+                        place = fromPlace,
+                        plainLat = fromLocation?.lat,
+                        plainLon = fromLocation?.lon,
+                        plainLabel = fromLabel,
+                        failed = fromFailed,
+                        onChange = { clearFrom(); activeEditingField = EditingField.FROM },
+                        onTryAgain = { fromFailedText?.let { resolveInto(PickTarget.FROM, it) } },
+                        onViewLink = { fromFailedText?.let { OfflineParse.extractUrl(it) }?.let { openUrlExternally(context, it) } },
+                        onPasteCoordinates = { pasteInto(PickTarget.FROM) },
+                        onViewInMaps = { fromLocation?.let { viewLocationInGoogleMaps(context, it.lat, it.lon, fromLabel) } }
+                    )
                 }
             }
 
@@ -547,15 +632,19 @@ fun TripSetupScreen(navController: NavController) {
                         val dest = destination ?: return@OutlinedButton
                         val oldFromLocation = fromLocation
                         val oldFromLabel = fromQuery.ifBlank { fromLabel }
+                        val oldFromPlace = fromPlace
                         val oldDestLabel = destLabel
+                        val oldDestPlace = destPlace
 
                         fromLocation = dest
                         fromLabel = oldDestLabel
                         fromQuery = oldDestLabel
+                        fromPlace = oldDestPlace
 
                         destination = oldFromLocation
                         destLabel = oldFromLabel
                         toQuery = oldFromLabel
+                        destPlace = oldFromPlace
                         toFilledViaDefaultShare = false
                     }
                 ) {
@@ -575,23 +664,17 @@ fun TripSetupScreen(navController: NavController) {
                             val previousLength = toQuery.length
                             toQuery = q
                             destLabel = q
+                            destPlace = null
                             activeEditingField = EditingField.TO
                             toFilledViaDefaultShare = false
                             val pastedChunk = q.length - previousLength >= 15
-                            if (pastedChunk && looksLikePlaceText(q) && !pasteBusy) {
-                                pasteBusy = true
-                                scope.launch {
-                                    val parsed = ShareIntentParser().parse(q, near = currentReadyLatLon)
-                                    pasteBusy = false
-                                    if (parsed != null) applyParsedTo(PickTarget.TO, parsed)
-                                }
-                            }
+                            if (pastedChunk && looksLikePlaceText(q)) resolveInto(PickTarget.TO, q)
                         },
-                        label = {
-                            Text(
-                                if (resolvingShare && resolvingTarget == PickTarget.TO) "Reading shared place…" else "To (Destination)*",
-                                color = Color.LightGray
-                            )
+                        label = { Text(if (toReading) "Reading place…" else "To (Destination)*", color = Color.LightGray) },
+                        trailingIcon = {
+                            if (toReading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                            }
                         },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,
@@ -614,6 +697,7 @@ fun TripSetupScreen(navController: NavController) {
                                 destination = fix
                                 destLabel = "Current location"
                                 toQuery = "Current location"
+                                destPlace = null
                                 toFilledViaDefaultShare = false
                             } else {
                                 errorText = "Still finding your location, try again in a moment"
@@ -623,7 +707,7 @@ fun TripSetupScreen(navController: NavController) {
                             savedPlaceTargetField = EditingField.TO
                             showSavedPlacesDropdown = true
                         }) { Text("Saved places", color = Color.White) }
-                        TextButton(enabled = !pasteBusy, onClick = { pasteInto(PickTarget.TO, currentReadyLatLon) }) {
+                        TextButton(enabled = !pasteBusy, onClick = { pasteInto(PickTarget.TO) }) {
                             Text(if (pasteBusy) "Reading…" else "Paste", color = Color.White)
                         }
                         TextButton(
@@ -631,35 +715,37 @@ fun TripSetupScreen(navController: NavController) {
                             onClick = { savePlaceNameText = destLabel; showSavePlaceDialog = true }
                         ) { Text("Save", color = Color.White) }
                     }
+                    Text(
+                        "Tip: in Google Maps, long-press a spot, tap the coordinates to copy them, then tap Paste.",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
 
-                    if (destination != null) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.Black),
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
-                                Text(destLabel.ifBlank { "Destination" }, color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                                destination?.let {
-                                    Text("%.5f, %.5f".format(it.lat, it.lon), color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                                }
-                                FlowRow {
-                                    TextButton(onClick = { clearTo(); activeEditingField = EditingField.TO }) { Text("Change", color = Color.White) }
-                                    TextButton(onClick = {
-                                        destination?.let { viewLocationInGoogleMaps(context, it.lat, it.lon, destLabel) }
-                                    }) { Text("View in Google Maps", color = Color.White) }
-                                    if (toFilledViaDefaultShare) {
-                                        TextButton(onClick = {
-                                            val dest = destination ?: return@TextButton
-                                            fromLocation = dest
-                                            fromLabel = destLabel
-                                            fromQuery = destLabel
-                                            clearTo()
-                                        }) { Text("Use as start instead", color = Color.White) }
-                                    }
-                                }
+                    PlaceOrFailureCard(
+                        place = destPlace,
+                        plainLat = destination?.lat,
+                        plainLon = destination?.lon,
+                        plainLabel = destLabel.ifBlank { "Destination" },
+                        failed = toFailed,
+                        onChange = { clearTo(); activeEditingField = EditingField.TO },
+                        onTryAgain = { toFailedText?.let { resolveInto(PickTarget.TO, it) } },
+                        onViewLink = { toFailedText?.let { OfflineParse.extractUrl(it) }?.let { openUrlExternally(context, it) } },
+                        onPasteCoordinates = { pasteInto(PickTarget.TO) },
+                        onViewInMaps = { destination?.let { viewLocationInGoogleMaps(context, it.lat, it.lon, destLabel) } },
+                        extraAction = if (toFilledViaDefaultShare) {
+                            {
+                                TextButton(onClick = {
+                                    val dest = destination ?: return@TextButton
+                                    fromLocation = dest
+                                    fromLabel = destLabel
+                                    fromQuery = destLabel
+                                    fromPlace = destPlace
+                                    clearTo()
+                                }) { Text("Use as start instead", color = Color.White) }
                             }
-                        }
-                    }
+                        } else null
+                    )
 
                     // SEARCH RESULTS DROPDOWN (max 8 rows, local matches tagged)
                     if (activeEditingField != null) {
@@ -699,10 +785,12 @@ fun TripSetupScreen(navController: NavController) {
                                             fromLocation = result.location
                                             fromLabel = result.label
                                             fromQuery = result.label
+                                            fromPlace = null
                                         } else {
                                             destination = result.location
                                             destLabel = result.label
                                             toQuery = result.label
+                                            destPlace = null
                                             toFilledViaDefaultShare = false
                                         }
                                         searchResults = emptyList()
@@ -731,8 +819,8 @@ fun TripSetupScreen(navController: NavController) {
                                             scope.launch {
                                                 val q = if (field == EditingField.FROM) fromQuery else toQuery
                                                 searching = true
-                                                val settings = runCatching { SettingsRepository(context).get() }.getOrNull()
-                                                val results = placeSearchRepo.search(q, near = currentReadyLatLon, countryCode = settings?.searchCountryCode)
+                                                val s = runCatching { SettingsRepository(context).get() }.getOrNull()
+                                                val results = placeSearchRepo.search(q, near = currentReadyLatLon, countryCode = s?.searchCountryCode)
                                                 searching = false
                                                 searchResults = results
                                                 searchFailed = results.isEmpty()
@@ -763,6 +851,7 @@ fun TripSetupScreen(navController: NavController) {
                                             destination = LatLon(place.lat, place.lon)
                                             destLabel = place.name
                                             toQuery = place.name
+                                            destPlace = null
                                             toFilledViaDefaultShare = false
                                         },
                                         label = { Text(place.name, color = Color.White) },
@@ -782,6 +871,7 @@ fun TripSetupScreen(navController: NavController) {
                                             destination = LatLon(trip.toLat, trip.toLon)
                                             destLabel = trip.toLabel
                                             toQuery = trip.toLabel
+                                            destPlace = null
                                             toFilledViaDefaultShare = false
                                             mode = trip.mode
                                             radiusMeters = trip.radiusMeters
@@ -858,7 +948,7 @@ fun TripSetupScreen(navController: NavController) {
             }
 
             errorText?.let {
-                Text(it, color = Color.Red, modifier = Modifier.padding(top = 8.dp))
+                Text(it, color = Color.LightGray, modifier = Modifier.padding(top = 8.dp))
             }
         }
     }
@@ -869,7 +959,11 @@ fun TripSetupScreen(navController: NavController) {
             containerColor = Color.Black,
             title = { Text("Choose in Google Maps", color = Color.White) },
             text = {
-                Text("In Google Maps, search the place, tap Share, then choose Knock Me.", color = Color.LightGray)
+                Text(
+                    "In Google Maps, search the place, tap Share, then choose Knock Me. Or long-press a " +
+                        "spot, tap the coordinates to copy them, then come back here and tap Paste.",
+                    color = Color.LightGray
+                )
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -903,11 +997,8 @@ fun TripSetupScreen(navController: NavController) {
                     lastClipboardOfferedText = text
                     showClipboardOfferSheet = false
                     if (text != null) {
-                        scope.launch {
-                            val parsed = ShareIntentParser().parse(text, near = currentReadyLatLon)
-                            if (parsed != null) applyParsedTo(target, parsed)
-                            pendingPickRepo.clear()
-                        }
+                        resolveInto(target, text)
+                        scope.launch { pendingPickRepo.clear() }
                     }
                 }) { Text("Use", color = Color.White) }
             },
@@ -936,10 +1027,12 @@ fun TripSetupScreen(navController: NavController) {
                                     fromLocation = LatLon(place.lat, place.lon)
                                     fromLabel = place.name
                                     fromQuery = place.name
+                                    fromPlace = null
                                 } else {
                                     destination = LatLon(place.lat, place.lon)
                                     destLabel = place.name
                                     toQuery = place.name
+                                    destPlace = null
                                     toFilledViaDefaultShare = false
                                 }
                                 showSavedPlacesDropdown = false
@@ -1077,5 +1170,57 @@ fun TripSetupScreen(navController: NavController) {
                 TextButton(onClick = { showAlreadyInsideDialog = false }) { Text("Cancel", color = Color.White) }
             }
         )
+    }
+}
+
+/** Below a From/To field: once filled, a place card (name, address, grey coordinates, Change +
+ * View in Google Maps); on a resolve failure, a calm grey card instead — never a raw URL, never
+ * red text (v2.0 rule, red is reserved for the alarm screen and Stop button). */
+@Composable
+private fun PlaceOrFailureCard(
+    place: Place?,
+    plainLat: Double?,
+    plainLon: Double?,
+    plainLabel: String,
+    failed: Boolean,
+    onChange: () -> Unit,
+    onTryAgain: () -> Unit,
+    onViewLink: () -> Unit,
+    onPasteCoordinates: () -> Unit,
+    onViewInMaps: () -> Unit,
+    extraAction: (@Composable () -> Unit)? = null
+) {
+    if (failed) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color.Black),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+        ) {
+            Column(modifier = Modifier.padding(8.dp)) {
+                Text("Could not read this link.", color = Color.LightGray)
+                FlowRow(modifier = Modifier.padding(top = 4.dp)) {
+                    TextButton(onClick = onTryAgain) { Text("Try again", color = Color.White) }
+                    TextButton(onClick = onViewLink) { Text("View link in Google Maps", color = Color.White) }
+                    TextButton(onClick = onPasteCoordinates) { Text("Paste coordinates", color = Color.White) }
+                }
+            }
+        }
+        return
+    }
+    if (plainLat == null || plainLon == null) return
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.Black),
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            Text(place?.name ?: plainLabel, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+            place?.address?.let { Text(it, color = Color.LightGray, style = MaterialTheme.typography.bodySmall) }
+            place?.source?.let { Text("Shared from $it", color = Color.Gray, style = MaterialTheme.typography.bodySmall) }
+            Text(OfflineParse.coordinateLabel(plainLat, plainLon), color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+            FlowRow(modifier = Modifier.padding(top = 4.dp)) {
+                TextButton(onClick = onChange) { Text("Change", color = Color.White) }
+                TextButton(onClick = onViewInMaps) { Text("View in Google Maps", color = Color.White) }
+                extraAction?.invoke()
+            }
+        }
     }
 }

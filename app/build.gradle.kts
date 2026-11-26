@@ -42,6 +42,7 @@ android {
         buildConfigField("String", "NOMINATIM_BASE_URL", "\"${gradleProp("NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org")}\"")
         buildConfigField("String", "PHOTON_BASE_URL", "\"${gradleProp("PHOTON_BASE_URL", "https://photon.komoot.io")}\"")
         buildConfigField("String", "CONTACT_EMAIL", "\"${gradleProp("KNOCKME_CONTACT_EMAIL", "contact@example.com")}\"")
+        buildConfigField("String", "UNSHORTENER_BASE_URL", "\"${gradleProp("UNSHORTENER_BASE_URL", "https://mapu.retiolus.net")}\"")
 
         val kolkataNow = SimpleDateFormat("yyyy-MM-dd HH:mm").apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date())
         buildConfigField("String", "BUILD_DATE", "\"$kolkataNow\"")
