@@ -8,7 +8,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 private const val PROVIDER_TIMEOUT_MS = 6_000L
 
-/** The search/reverse-geocode surface [ShareIntentParser] needs, kept small and behind an
+/** The search/reverse-geocode surface [PlaceInputResolver] needs, kept small and behind an
  * interface so tests can fake it instead of hitting the network. */
 interface GeocodeProvider {
     suspend fun search(query: String, near: LatLon?, countryCode: String? = null): List<PlaceResult>

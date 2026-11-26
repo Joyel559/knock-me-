@@ -184,6 +184,29 @@ fun SettingsScreen(navController: NavController) {
                 colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
             )
 
+            // LINKS SECTION (v2.0)
+            Text("Links", color = Color.LightGray, modifier = Modifier.padding(top = 24.dp), style = MaterialTheme.typography.titleMedium)
+            Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Switch(
+                    checked = settings.useOnlineLinkResolver,
+                    onCheckedChange = { v -> scope.launch { repo.update { it.copy(useOnlineLinkResolver = v) } } }
+                )
+                Text("Use online link resolver", color = Color.White, modifier = Modifier.padding(start = 8.dp))
+            }
+            Text(
+                "Sends the shared Google Maps link to mapu.retiolus.net to read the place faster. " +
+                    "Turn off to keep links on your phone. A short link is also opened directly from your phone.",
+                color = Color.Gray,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            if (com.joyel.tripguard.BuildConfig.DEBUG) {
+                OutlinedButton(
+                    modifier = Modifier.padding(top = 8.dp),
+                    onClick = { navController.navigate(Routes.LINK_DEBUG) }
+                ) { Text("Link debug", color = Color.White) }
+            }
+
             // MEMORY FILE SECTION
             Text("Memory File (Shared Storage)", color = Color.Yellow, modifier = Modifier.padding(top = 24.dp), style = MaterialTheme.typography.titleMedium)
             Text("Path: Documents/Knock Me Memory/knock_me_memory.json", color = Color.LightGray, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))

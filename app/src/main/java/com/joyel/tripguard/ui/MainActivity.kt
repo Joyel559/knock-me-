@@ -58,6 +58,7 @@ object Routes {
     const val RELIABILITY = "reliability"
     const val ABOUT = "about"
     const val PRIVACY = "privacy"
+    const val LINK_DEBUG = "link_debug"
 }
 
 class MainActivity : ComponentActivity() {
@@ -108,6 +109,7 @@ class MainActivity : ComponentActivity() {
                     composable(Routes.RELIABILITY) { com.joyel.tripguard.ui.screens.ReliabilityScreen(navController) }
                     composable(Routes.ABOUT) { com.joyel.tripguard.ui.screens.AboutScreen(navController) }
                     composable(Routes.PRIVACY) { com.joyel.tripguard.ui.screens.PrivacyScreen(navController) }
+                    composable(Routes.LINK_DEBUG) { com.joyel.tripguard.ui.screens.LinkDebugScreen(navController) }
                     composable(Routes.ONBOARDING) {
                         OnboardingScreen(onFinished = {
                             val target = if (SharedDestinationHolder.rawText != null) Routes.SETUP else null
