@@ -50,12 +50,13 @@ duration (default 36 hours, editable in Settings) so nothing can track forever b
 - Current location and destination fields, with search, "Choose in Google Maps", and paste support.
 - No-API-key place search: searches your saved/recent places, Photon, and Nominatim at once,
   sorts the results (your own places first, then nearest to you), and removes duplicates.
-- Paste or share a Google Maps link — including a short `maps.app.goo.gl` link, which carries no
-  name or coordinates by itself — shared text, a `geo:` link, plain coordinates, or a Plus Code
-  (full or short). A short link resolves within about 1.5 seconds typically; the raw link is never
-  shown while it's being read, and a calm card with retry options appears if it can't be read
-  (e.g. no internet). Settings → Links lets you turn off sending the link to the (optional, public)
-  resolver that makes this fast.
+- Paste or share a Google Maps link — a full link (`@lat,lon` or the `!3d!4d` pin), a short
+  `maps.app.goo.gl` link (which carries no name or coordinates by itself), shared text, a `geo:`
+  link, plain `lat, lon` coordinates copied from Maps, or a Plus Code (full or short). A short
+  link resolves within about 1.5 seconds typically; the raw link is never shown while it's being
+  read, and a calm card with retry options appears if it can't be read (e.g. no internet).
+  Settings → Links lets you turn off sending the link to the (optional, public) resolver that
+  makes this fast.
 - Choose in Google Maps / Share to Knock Me: tap "Choose in Google Maps" on From or To (opens
   Google Maps to search, then Share > Knock Me fills the field directly, no extra map, no confirm
   step), or share a place straight from Maps or any app — Trip Setup opens with the destination
